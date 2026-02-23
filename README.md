@@ -1,53 +1,70 @@
-# Ethernet Cable Connection Manager
+# ECCM – Ethernet Cable Connection Manager (MySQL Edition)
 
-A lightweight, browser-based tool for mapping Ethernet connections.  
-Create switches, patch panels, wall ports, routers, etc. Assign ports, connect them, and visualise how your network is wired.  
+## Übersicht
 
-_Featured on:_<br>
-🎞️ _<a href="https://www.youtube.com/watch?v=b_ggjSxFNYM&t=81s" target="_blank">Best Docker Apps of September 2025 by ServersatHome</a>_<br>
-🎞️ _<a href="https://www.youtube.com/watch?v=BWz9uFSNA8A&t=1245s" target="_blank">Docker full of tools by MP Studio</a>_<br>
-_Thank you for sharing!_
+MySQL-basierte Version des ECCM mit Benutzerauthentifizierung.
 
-📖 **User Manual** see [MANUAL.md](MANUAL.md)
+## Features
 
-📍 **Roadmap / To-Do:** see [ROADMAP.md](ROADMAP.md)
+- **Login-System** mit sicherer Passwort-Hashung (bcrypt)
+- **Passwort-Zurücksetzung** per E-Mail-Link
+- **MySQL-Speicherung** aller Profile und Einstellungen pro Benutzer
+- **Admin-Panel** für Benutzerverwaltung und DB-Konfiguration
+- **CSRF-Schutz** auf allen Formularen
+- Alle Original-ECCM-Funktionen (Geräte, Ports, Verbindungen, Themes usw.)
 
-- 🖥️ Works offline (pure HTML + JavaScript, no server required)  
-- 📂 Save/export/import layouts as JSON  
-- 🖨️ Print sheets with device colours and linked ports  
-- 👥 Manage multiple profiles (e.g., different customer networks)  
-- 🎨 Colour-code devices and customise port aliases  
-- 🔌 Dual-link ports supported (patch panels, wall sockets)
+## Voraussetzungen
 
-**_Editor (Dark and Light mode):_**
+- PHP 7.4+ (empfohlen: PHP 8.x)
+- MySQL 5.7+ oder MariaDB 10.3+
+- Apache mit mod_rewrite (oder nginx)
+- PHP-Erweiterungen: `pdo`, `pdo_mysql`, `mbstring`
 
-<img src="https://github.com/bijomaru78/eccm/blob/main/eccm_ui_dark_light_animation.gif?raw=true">
+## Installation
 
-**_Print sheet (devices and ports):_**
+1. **Dateien auf den Webserver kopieren**
+2. **`install.php` im Browser aufrufen**: `http://dein-server/eccm/install.php`
+3. **DB-Verbindung und Admin-Konto eingeben** → "Installieren" klicken
+4. **`install.php` löschen** (Sicherheit!)
+5. **Einloggen unter** `http://dein-server/eccm/login.php`
 
-<img width="900" alt="image" src="https://github.com/user-attachments/assets/fdb68294-eeec-43c5-b5c9-0b978d6fdc28" />
+## Dateistruktur
 
-**_Print sheet (connections table):_**
+```
+eccm/
+├── index.php              # Hauptanwendung (erfordert Login)
+├── login.php              # Login-Seite
+├── logout.php             # Logout
+├── forgot_password.php    # Passwort vergessen
+├── reset_password.php     # Neues Passwort setzen (via Token)
+├── admin.php              # Admin-Panel (nur für Admins)
+├── install.php            # Installer (nach Setup löschen!)
+├── .htaccess              # Apache-Sicherheitsregeln
+├── database.sql           # SQL-Schema (Referenz)
+├── api/
+│   ├── profiles.php       # AJAX: Profil laden/speichern
+│   └── admin.php          # AJAX: Benutzer-/DB-Verwaltung
+├── includes/
+│   ├── config.php         # Standard-Konfiguration
+│   ├── config.local.php   # Lokale DB-Konfiguration (auto-generiert)
+│   ├── db.php             # PDO-Verbindung
+│   └── auth.php           # Authentifizierungsfunktionen
+└── assets/
+    └── eccm-core.js       # ECCM-Anwendungslogik
+```
 
-<img width="617" height="558" alt="image" src="https://github.com/user-attachments/assets/4967c6f2-caf6-4eb2-add0-2a1d5170ad0d" />
+## Admin-Funktionen
 
+Im Admin-Panel (`/admin.php`) können Administratoren:
+- Neue Benutzer erstellen
+- Benutzer bearbeiten (Name, E-Mail, Passwort, Rolle)
+- Benutzer löschen
+- Die MySQL-Verbindung ändern und testen
+- Die SMTP Einstellungen festlegen und ändern
 
-## 🚀 Try it online
-You can open the app instantly here (hosted via GitHub Pages):  
-👉 [Ethernet Cable Connection Manager DEMO](https://bijomaru78.github.io/eccm/ECCM.html)
+## Passwort zurücksetzen
 
-Or download the zip from the releases page and run it locally.
-
-## 📥 Download
-Grab the latest release here:  
-👉 [Releases](https://github.com/bijomaru78/eccm/releases)
-
-## 💡 Support
-This project is free and open source (GPL-3.0).  
-If it saves you time or helps in your work, consider supporting development:  
-
-<a href="https://www.buymeacoffee.com/bijomaru78" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
-
-## 📜 License
-This project is licensed under the **GNU GPL-3.0**.  
-You are free to use, modify, and redistribute it, but if you distribute changes, you must also provide the source code under the same license.
+- Auf der Login-Seite "Passwort vergessen?" klicken
+- E-Mail-Adresse eingeben
+- Reset-Link wird per E-Mail gesendet (PHP `mail()`)
+- Link ist 1 Stunde gültig

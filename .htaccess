@@ -1,0 +1,13 @@
+# Deny access to sensitive files
+<FilesMatch "\.(sql|md)$">
+    Require all denied
+</FilesMatch>
+
+# Deny access to includes directory
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^includes/ - [F,L]
+</IfModule>
+
+# Default to index.php
+DirectoryIndex index.php
