@@ -68,3 +68,6 @@ Im Admin-Panel (`/admin.php`) können Administratoren:
 - E-Mail-Adresse eingeben
 - Reset-Link wird per E-Mail gesendet (PHP `mail()`)
 - Link ist 1 Stunde gültig
+
+```
+Hilfe von Claude erhalten
