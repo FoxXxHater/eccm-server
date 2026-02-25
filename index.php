@@ -1,12 +1,16 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
 requireLogin();
+require_once __DIR__ . '/includes/i18n.php';
+detectLanguage();
 $isAdmin = (currentUserRole() === 'admin');
 $username = htmlspecialchars(currentUsername());
 $userId = currentUserId();
+$t = function($k){ return __t($k); };
+$appName = getAppName();
 ?>
 <!doctype html>
-<html lang="en">
+<html lang="<?=($GLOBALS['ECCM_LANG']??'de')?>">
 <head>
 <link type="image/png" sizes="32x32" rel="icon" href="https://img.icons8.com/stickers/32/ethernet-on.png">
 <meta charset="utf-8" />
@@ -92,6 +96,10 @@ button:hover{border-color:#2a2f3b}
 .modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
 /* Theme bright overrides */
 html.theme-bright body,html.theme-bright .card,html.theme-bright aside,html.theme-bright main,html.theme-bright #settingsPanel{background:#fff!important;color:#111!important;border-color:#ccc!important;--muted:#222;--paper:#fff}
+html.theme-bright .slideover__panel,html.theme-bright .slideover__header,html.theme-bright .slideover__footer,html.theme-bright .slideover__body{background:#fff!important;color:#111!important;border-color:#ddd!important;--paper:#fff;--ink:#111}
+html.theme-bright .slideover__panel .card{background:#f8f9fa!important;border-color:#ddd!important}
+html.theme-bright .slideover__panel label,html.theme-bright .slideover__panel h3{color:#111!important}
+html.theme-bright .slideover__panel select,html.theme-bright .slideover__panel input{background:#fff!important;color:#111!important;border-color:#ccc!important}
 html.theme-bright header{background:#fff!important;border-bottom:1px solid #e5e7eb!important;color:#111!important}
 html.theme-bright header h1{color:#111!important}
 html.theme-bright header .badge{background:#fff!important;color:#444!important;border-color:#e0e6ef!important}
@@ -107,6 +115,15 @@ html.theme-bright .conn-row.highlight td{background:#e8f0fe!important;color:#000
 html.theme-bright .palette{background:#fff!important;border-color:#ccc!important;color:#000!important}
 html.theme-bright .modal{background:#fff!important;border:1px solid #ccc!important;color:#111!important}
 html.theme-bright .modal h4,html.theme-bright .modal label{color:#111!important}
+html.theme-bright .modal-backdrop .modal{background:#fff!important;color:#111!important}
+html.theme-bright .perm-table th,html.theme-bright .notif-table th{background:#f6f7f9!important;color:#444!important;border-color:#ddd!important}
+html.theme-bright .perm-table td,html.theme-bright .notif-table td{border-color:#eee!important;color:#111!important}
+html.theme-bright .perm-table,html.theme-bright .notif-table{border-color:#ddd!important}
+html.theme-bright .modal input[type=text],html.theme-bright .modal input[type=number],html.theme-bright .modal select{background:#fff!important;color:#111!important;border:1px solid #ccc!important}
+html.theme-bright .modal .actions button{background:#fff!important;color:#111!important;border:1px solid #ccc!important}
+html.theme-bright .modal .actions .btn-primary{background:#3b82f6!important;color:#fff!important;border-color:#3b82f6!important}
+html.theme-bright .modal .small.muted,html.theme-bright .notif-hint{color:#666!important}
+html.theme-bright .notif-table td:nth-child(2){color:#666!important}
 /* Slideover */
 .slideover{position:fixed;inset:0;z-index:5000;display:none;font:inherit;color:var(--ink)}.slideover.is-open{display:block}
 .slideover__backdrop{position:absolute;inset:0;background:rgba(0,0,0,.35);opacity:0;transition:opacity .2s ease}.slideover.is-open .slideover__backdrop{opacity:1}
@@ -162,151 +179,152 @@ html.theme-bright .perm-badge{background:#e2e8f0;color:#475569}
 <body>
 
 <header>
-  <h1>Ethernet Cable Connection Manager</h1>
-  <span class="badge">1.0.6</span>
+  <h1><?=htmlspecialchars($appName)?></h1>
+  <span class="badge"><?=$t('app_version')?></span>
   <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
     <div class="user-info">
       👤 <?=$username?>
-      <?php if($isAdmin):?><a href="admin.php">Admin</a><?php endif;?>
-      <a href="logout.php">Abmelden</a>
+      <?php if($isAdmin):?><a href="admin.php"><?=$t('admin')?></a><?php endif;?>
+      <a href="logout.php"><?=$t('logout')?></a>
     </div>
-    <button id="btnNotifications" class="btn" title="Benachrichtigungen">🔔</button>
-    <button id="btnSettings" class="btn">Settings</button>
-    <button id="printSheet">Print layout</button>
+    <button id="btnNotifications" class="btn" title="<?=$t('notifications')?>">🔔</button>
+    <button id="btnSettings" class="btn"><?=$t('settings')?></button>
+    <button id="printSheet"><?=$t('print_layout')?></button>
   </div>
 </header>
 
 <div class="wrap">
 <aside>
   <div class="card">
-    <h3>Profiles</h3>
-    <label for="profileSelect">Active profile</label>
+    <h3><?=$t('profiles')?></h3>
+    <label for="profileSelect"><?=$t('active_profile')?></label>
     <select id="profileSelect"></select>
     <div id="profileInfo" class="profile-owner"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-      <button id="newProfileBtn">New</button>
-      <button id="renameProfileBtn">Rename</button>
-      <button id="duplicateProfileBtn">Duplicate</button>
-      <button id="deleteProfileBtn" class="btn-danger">Delete</button>
-      <button id="permProfileBtn" class="btn" title="Berechtigungen verwalten">🔒 Rechte</button>
-      <button id="exportProfileBtn" class="btn">Export</button>
-      <button id="importProfileBtn" class="btn">Import</button>
+      <button id="newProfileBtn"><?=$t('new')?></button>
+      <button id="renameProfileBtn"><?=$t('rename')?></button>
+      <button id="duplicateProfileBtn"><?=$t('duplicate')?></button>
+      <button id="deleteProfileBtn" class="btn-danger"><?=$t('delete')?></button>
+      <button id="permProfileBtn" class="btn" title="<?=$t('manage_perms')?>"><?=$t('permissions')?></button>
+      <button id="exportProfileBtn" class="btn"><?=$t('export')?></button>
+      <button id="importProfileBtn" class="btn"><?=$t('import')?></button>
       <input id="importProfileFile" type="file" accept=".json,application/json" style="display:none">
     </div>
   </div>
   <div class="card">
-    <h3>Add device</h3>
-    <label for="devName">Name</label>
-    <input id="devName" type="text" placeholder="e.g. Core Switch A" />
-    <div class="row"><div><label for="devPorts">Ports</label><input id="devPorts" type="number" inputmode="numeric" min="1" max="9999" value="24" /></div></div>
-    <label>Colour</label>
+    <h3><?=$t('add_device')?></h3>
+    <label for="devName"><?=$t('device_name')?></label>
+    <input id="devName" type="text" placeholder="<?=$t('device_name')?>" />
+    <div class="row"><div><label for="devPorts"><?=$t('device_ports')?></label><input id="devPorts" type="number" inputmode="numeric" min="1" max="9999" value="24" /></div></div>
+    <label><?=$t('device_colour')?></label>
     <div class="color-picker-row">
-      <button type="button" class="color-btn" id="openPalette">Select colour</button>
-      <span id="devColorPreview" class="swatch swatch-lg" title="Selected colour"></span>
+      <button type="button" class="color-btn" id="openPalette"><?=$t('select_colour')?></button>
+      <span id="devColorPreview" class="swatch swatch-lg" title="<?=$t('device_colour')?>"></span>
     </div>
     <div style="margin-top:10px;display:flex;gap:8px">
-      <button id="addBtn">Add device</button>
-      <button id="clearAll" class="btn-danger" title="Delete everything">Clear all devices</button>
+      <button id="addBtn"><?=$t('add_device_btn')?></button>
+      <button id="clearAll" class="btn-danger" title="<?=$t('clear_all')?>"><?=$t('clear_all')?></button>
     </div>
-    <div class="small muted" style="margin-top:6px">Click two free ports to connect<br><strong>Unlink</strong> in Connections<br><strong>Alt-click</strong> a port to set an alias<br><strong>CTRL-click</strong> to mark as Reserved.</div>
+    <div class="small muted" style="margin-top:6px"><?=$t('port_help')?><br><strong><?=$t('unlink_help')?></strong><br><strong><?=$t('alias_help')?></strong><br><strong><?=$t('reserve_help')?></strong></div>
   </div>
   <div class="card">
-    <h3>Backup / Restore (all profiles)</h3>
+    <h3><?=$t('backup_restore')?></h3>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button id="backupAllBtn" class="btn">Backup all</button>
-      <button id="restoreAllBtn" class="btn">Restore all</button>
+      <button id="backupAllBtn" class="btn"><?=$t('backup_all')?></button>
+      <button id="restoreAllBtn" class="btn"><?=$t('restore_all')?></button>
       <input id="restoreAllFile" type="file" accept=".json,application/json" style="display:none">
     </div>
   </div>
   <div class="card">
-    <h3>Find connection</h3>
-    <input id="searchBox" type="text" placeholder="Filter by device, port, alias, or reserved…" />
+    <h3><?=$t('find_connection')?></h3>
+    <input id="searchBox" type="text" placeholder="<?=$t('search_placeholder')?>" />
   </div>
 </aside>
 
 <main>
-  <div class="card"><h3>Devices</h3><div id="devRows" class="dev-rows"></div></div>
+  <div class="card"><h3><?=$t('devices')?></h3><div id="devRows" class="dev-rows"></div></div>
   <div class="card">
-    <h3>Connections</h3>
+    <h3><?=$t('connections')?></h3>
     <table class="grid-slim" id="connTable">
-      <thead><tr><th>#</th><th>Device A</th><th>Port</th><th>Alias</th><th>⇄</th><th>Device B</th><th>Port</th><th>Alias</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th><?=$t('conn_device_a')?></th><th><?=$t('conn_port')?></th><th><?=$t('conn_alias')?></th><th>⇄</th><th><?=$t('conn_device_b')?></th><th><?=$t('conn_port')?></th><th><?=$t('conn_alias')?></th><th></th></tr></thead>
       <tbody id="connBody"></tbody>
     </table>
-    <div class="small muted">Click a row (or a connected port) to highlight both ends.</div>
+    <div class="small muted"><?=$t('conn_highlight_hint')?></div>
   </div>
 </main>
 </div>
 
-<div class="save-indicator" id="saveIndicator">✓ Gespeichert</div>
+<div class="save-indicator" id="saveIndicator"></div>
 
 <!-- Settings Slide-Over -->
 <div id="settingsModal" class="slideover" aria-hidden="true">
   <div class="slideover__backdrop" data-close></div>
   <aside class="slideover__panel" role="dialog" aria-modal="true" tabindex="-1">
-    <header class="slideover__header"><h3>Settings</h3></header>
+    <header class="slideover__header"><h3><?=$t('settings')?></h3></header>
     <div class="slideover__body">
-      <div class="card"><div class="setting-row"><label>Theme</label><div class="theme-toggle" role="group"><button type="button" id="themeDark" data-theme="dark" aria-pressed="false">🌙 Dark</button><button type="button" id="themeLight" data-theme="bright" aria-pressed="false">☀️ Light</button></div></div></div>
+      <div class="card"><div class="setting-row"><label><?=$t('theme')?></label><div class="theme-toggle" role="group"><button type="button" id="themeDark" data-theme="dark" aria-pressed="false">🌙 <?=$t('dark')?></button><button type="button" id="themeLight" data-theme="bright" aria-pressed="false">☀️ <?=$t('light')?></button></div></div></div>
       <div class="card">
-        <div class="setting-row"><label for="enablePortRename">Enable Port Renaming</label><input id="enablePortRename" type="checkbox" /></div>
-        <div class="setting-row"><label for="maxPorts" style="flex:1;">Maximum ports per device</label><input id="maxPorts" type="number" min="0" max="9999" style="flex:1;max-width:120px;" /></div>
-        <div style="margin-top:10px"><button id="saveSettingsBtn" class="btn">Save</button></div>
+        <div class="setting-row"><label for="enablePortRename"><?=$t('enable_port_rename')?></label><input id="enablePortRename" type="checkbox" /></div>
+        <div class="setting-row"><label for="maxPorts" style="flex:1;"><?=$t('max_ports_device')?></label><input id="maxPorts" type="number" min="0" max="9999" style="flex:1;max-width:120px;" /></div>
+        <div class="setting-row"><label for="userLang" style="flex:1;"><?=$t('language')?></label><select id="userLang" style="flex:1;max-width:160px;"><option value="de">Deutsch</option><option value="en">English</option></select></div>
+        <div style="margin-top:10px"><button id="saveSettingsBtn" class="btn"><?=$t('save')?></button></div>
       </div>
     </div>
-    <footer class="slideover__footer"><button class="btn" data-close>Close</button></footer>
+    <footer class="slideover__footer"><button class="btn" data-close><?=$t('close')?></button></footer>
   </aside>
 </div>
 
 <!-- Palette -->
-<div class="palette-backdrop" id="paletteModal"><div class="palette"><h4>Select colour</h4><div style="display:flex;gap:20px;justify-content:center;align-items:flex-start;flex-wrap:wrap"><div class="palette-grid" id="paletteGrid"></div></div><div class="actions"><button type="button" id="paletteClose">Close</button></div></div></div>
+<div class="palette-backdrop" id="paletteModal"><div class="palette"><h4><?=$t('select_colour')?></h4><div style="display:flex;gap:20px;justify-content:center;align-items:flex-start;flex-wrap:wrap"><div class="palette-grid" id="paletteGrid"></div></div><div class="actions"><button type="button" id="paletteClose"><?=$t('close')?></button></div></div></div>
 
 <!-- Layout modal -->
-<div class="modal-backdrop" id="layoutModal"><div class="modal"><h4>Device layout options</h4><div class="row"><label style="min-width:110px">Device</label><span id="layoutDeviceName" class="small muted"></span></div><div class="row"><label style="min-width:110px">Row width</label><select id="layoutFullRow"><option value="auto">Auto</option><option value="full">Force full row</option></select></div><div class="row" id="optMidWrap"><label style="min-width:110px">13–24 ports</label><select id="layoutMidWrap"><option value="balanced">Balanced</option><option value="twelve">12 + remainder</option></select></div><div class="row" id="optSmallWrap"><label style="min-width:110px">≤12 ports</label><select id="layoutSmallWrap"><option value="single">Single row</option><option value="split">Split</option></select></div><div class="row" id="optDualLink"><label style="min-width:110px">Dual link</label><select id="layoutDualLink"><option value="off">Normal</option><option value="on">Dual link</option></select></div><div class="row" id="optNumbering"><label style="min-width:110px">Port numbering</label><select id="layoutNumbering"><option value="row">Left → Right</option><option value="column">Top ↓ Bottom</option><option value="column-bt">Bottom ↑ Top</option></select></div><div class="actions"><button id="layoutCancel">Cancel</button><button id="layoutSave">Save</button></div></div></div>
+<div class="modal-backdrop" id="layoutModal"><div class="modal"><h4><?=$t('layout_options')?></h4><div class="row"><label style="min-width:110px"><?=$t('layout_device')?></label><span id="layoutDeviceName" class="small muted"></span></div><div class="row"><label style="min-width:110px"><?=$t('layout_row_width')?></label><select id="layoutFullRow"><option value="auto"><?=$t('layout_auto')?></option><option value="full"><?=$t('layout_force_full')?></option></select></div><div class="row" id="optMidWrap"><label style="min-width:110px"><?=$t('layout_13_24')?></label><select id="layoutMidWrap"><option value="balanced"><?=$t('layout_balanced')?></option><option value="twelve"><?=$t('layout_twelve')?></option></select></div><div class="row" id="optSmallWrap"><label style="min-width:110px"><?=$t('layout_12_or_less')?></label><select id="layoutSmallWrap"><option value="single"><?=$t('layout_single_row')?></option><option value="split"><?=$t('layout_split')?></option></select></div><div class="row" id="optDualLink"><label style="min-width:110px"><?=$t('layout_dual_link')?></label><select id="layoutDualLink"><option value="off"><?=$t('layout_normal')?></option><option value="on"><?=$t('layout_dual_on')?></option></select></div><div class="row" id="optNumbering"><label style="min-width:110px"><?=$t('layout_numbering')?></label><select id="layoutNumbering"><option value="row"><?=$t('layout_left_right')?></option><option value="column"><?=$t('layout_top_bottom')?></option><option value="column-bt"><?=$t('layout_bottom_top')?></option></select></div><div class="actions"><button id="layoutCancel"><?=$t('cancel')?></button><button id="layoutSave"><?=$t('save')?></button></div></div></div>
 
 <!-- Edit Device Modal -->
-<div class="modal-backdrop" id="editDeviceModal"><div class="modal"><h4>Edit Device</h4><div class="row"><label for="editDevName" style="min-width:100px">Name</label><input id="editDevName" type="text" /></div><div class="row"><label for="editDevPorts" style="min-width:100px">Ports</label><input id="editDevPorts" type="number" min="1" max="9999" /></div><div class="row"><label style="min-width:100px">Colour</label><div class="color-picker-row"><button type="button" class="color-btn" id="editOpenPalette">Select colour</button><span id="editDevColorPreview" class="swatch swatch-lg"></span></div></div><div class="actions"><button id="editDevCancel">Cancel</button><button id="editDevSave" class="btn">Save</button></div></div></div>
+<div class="modal-backdrop" id="editDeviceModal"><div class="modal"><h4><?=$t('edit')?> <?=$t('layout_device')?></h4><div class="row"><label for="editDevName" style="min-width:100px"><?=$t('device_name')?></label><input id="editDevName" type="text" /></div><div class="row"><label for="editDevPorts" style="min-width:100px"><?=$t('device_ports')?></label><input id="editDevPorts" type="number" min="1" max="9999" /></div><div class="row"><label style="min-width:100px"><?=$t('device_colour')?></label><div class="color-picker-row"><button type="button" class="color-btn" id="editOpenPalette"><?=$t('select_colour')?></button><span id="editDevColorPreview" class="swatch swatch-lg"></span></div></div><div class="actions"><button id="editDevCancel"><?=$t('cancel')?></button><button id="editDevSave" class="btn"><?=$t('save')?></button></div></div></div>
 
-<!-- NEW: Create Profile Modal with Permissions -->
+<!-- Create Profile Modal -->
 <div class="modal-backdrop" id="newProfileModal"><div class="modal perm-modal">
-  <h4>Neues Profil erstellen</h4>
-  <label>Profilname</label>
-  <input id="newProfName" type="text" placeholder="z.B. Kunde XY Serverraum" />
-  <h4 style="margin-top:14px">Berechtigungen für andere Benutzer</h4>
-  <div class="small muted" style="margin-bottom:8px">Der Ersteller hat immer volle Rechte. Admins haben immer vollen Zugriff.</div>
+  <h4><?=$t('new_profile')?></h4>
+  <label><?=$t('profile_name')?></label>
+  <input id="newProfName" type="text" placeholder="<?=$t('profile_name_ph')?>" />
+  <h4 style="margin-top:14px"><?=$t('perms_for_others')?></h4>
+  <div class="small muted" style="margin-bottom:8px"><?=$t('perms_owner_hint')?></div>
   <table class="perm-table" id="newProfPermsTable">
-    <thead><tr><th>Benutzer</th><th title="Profil ansehen">Ansehen</th><th title="Patchungen ändern">Patchen</th><th title="Neue Patchungen hinzufügen">+Patch</th><th title="Geräte bearbeiten">Gerät edit.</th><th title="Geräte hinzufügen">+Gerät</th><th title="Geräte/Verbindungen löschen">Löschen</th><th title="Rechte verwalten">Verwalten</th></tr></thead>
+    <thead><tr><th><?=$t('username')?></th><th><?=$t('perm_view')?></th><th><?=$t('perm_patch')?></th><th><?=$t('perm_add_patch')?></th><th><?=$t('perm_edit_device')?></th><th><?=$t('perm_add_device')?></th><th><?=$t('perm_delete')?></th><th><?=$t('perm_manage')?></th></tr></thead>
     <tbody id="newProfPermsBody"></tbody>
   </table>
-  <div class="actions" style="margin-top:14px"><button id="newProfCancel">Abbrechen</button><button id="newProfCreate" class="btn-primary">Erstellen</button></div>
+  <div class="actions" style="margin-top:14px"><button id="newProfCancel"><?=$t('cancel')?></button><button id="newProfCreate" class="btn-primary"><?=$t('create')?></button></div>
 </div></div>
 
-<!-- NEW: Manage Permissions Modal -->
+<!-- Manage Permissions Modal -->
 <div class="modal-backdrop" id="permModal"><div class="modal perm-modal">
-  <h4>Berechtigungen verwalten: <span id="permProfileName"></span></h4>
-  <div class="small muted" style="margin-bottom:8px">Der Eigentümer und Admins haben immer volle Rechte.</div>
+  <h4><?=$t('manage_perms')?>: <span id="permProfileName"></span></h4>
+  <div class="small muted" style="margin-bottom:8px"><?=$t('owner_admin_hint')?></div>
   <table class="perm-table">
-    <thead><tr><th>Benutzer</th><th>Ansehen</th><th>Patchen</th><th>+Patch</th><th>Gerät edit.</th><th>+Gerät</th><th>Löschen</th><th>Verwalten</th></tr></thead>
+    <thead><tr><th><?=$t('username')?></th><th><?=$t('perm_view')?></th><th><?=$t('perm_patch')?></th><th><?=$t('perm_add_patch')?></th><th><?=$t('perm_edit_device')?></th><th><?=$t('perm_add_device')?></th><th><?=$t('perm_delete')?></th><th><?=$t('perm_manage')?></th></tr></thead>
     <tbody id="permModalBody"></tbody>
   </table>
-  <div class="actions" style="margin-top:14px"><button id="permCancel">Abbrechen</button><button id="permSave" class="btn-primary">Speichern</button></div>
+  <div class="actions" style="margin-top:14px"><button id="permCancel"><?=$t('cancel')?></button><button id="permSave" class="btn-primary"><?=$t('save')?></button></div>
 </div></div>
 
-<!-- NEW: Notification Settings Modal -->
+<!-- Notification Settings Modal -->
 <div class="modal-backdrop" id="notifModal"><div class="modal notif-modal">
-  <h4>🔔 E-Mail-Benachrichtigungen</h4>
-  <p class="notif-hint">Wähle aus, bei welchen Änderungen du per E-Mail benachrichtigt werden möchtest. Du wirst nur bei Änderungen durch andere Benutzer benachrichtigt, nicht bei eigenen.</p>
+  <h4><?=$t('notif_title')?></h4>
+  <p class="notif-hint"><?=$t('notif_hint')?></p>
   <table class="notif-table" id="notifTable">
     <thead><tr>
-      <th>Profil</th><th>Eigentümer</th>
-      <th title="Wenn ein Gerät/Switch geändert wird">Gerät geändert</th>
-      <th title="Wenn ein neues Gerät hinzugefügt wird">Gerät hinzugefügt</th>
-      <th title="Wenn eine Patchung geändert wird">Patch geändert</th>
-      <th title="Wenn eine neue Patchung erstellt wird">Patch hinzugefügt</th>
+      <th><?=$t('profiles')?></th><th><?=$t('owner')?></th>
+      <th><?=$t('notif_device_change')?></th>
+      <th><?=$t('notif_device_add')?></th>
+      <th><?=$t('notif_patch_change')?></th>
+      <th><?=$t('notif_patch_add')?></th>
     </tr></thead>
     <tbody id="notifTableBody"></tbody>
   </table>
   <div class="actions" style="margin-top:14px">
-    <button id="notifCancel">Abbrechen</button>
-    <button id="notifSave" class="btn-primary">Speichern</button>
+    <button id="notifCancel"><?=$t('cancel')?></button>
+    <button id="notifSave" class="btn-primary"><?=$t('save')?></button>
   </div>
 </div></div>
 
@@ -314,6 +332,7 @@ html.theme-bright .perm-badge{background:#e2e8f0;color:#475569}
 /* ===================== GLOBALS ===================== */
 var CURRENT_USER_ID = <?=$userId?>;
 var IS_ADMIN = <?=$isAdmin?'true':'false'?>;
+var T = <?=getTranslationsJSON()?>;
 
 var defaultState = {devices:[],links:[],portAliases:{},reservedPorts:{},portSpeeds:{},portVlans:{},portLinkedTo:{}};
 function deepClone(o){return JSON.parse(JSON.stringify(o));}
@@ -368,7 +387,7 @@ function saveStore(){
 
 function showSaveIndicator(isError){
   var el=document.getElementById('saveIndicator');
-  el.textContent=isError?'✗ Speicherfehler':'✓ Gespeichert';
+  el.textContent=isError?T.save_error:T.saved;
   el.classList.toggle('error',isError);el.classList.add('show');
   setTimeout(function(){el.classList.remove('show');},1500);
 }
@@ -387,6 +406,11 @@ function $all(s){return Array.prototype.slice.call(document.querySelectorAll(s))
 function el(tag,attrs){var node=document.createElement(tag);attrs=attrs||{};Object.keys(attrs).forEach(function(k){var v=attrs[k];if(k==='dataset'){Object.keys(v).forEach(function(dk){if(v[dk]!==undefined)node.dataset[dk]=v[dk];})}else if(k==='class'){node.className=v}else if(k.indexOf('on')===0&&typeof v==='function'){node.addEventListener(k.slice(2),v)}else{node.setAttribute(k,v)}});for(var i=2;i<arguments.length;i++){var c=arguments[i];if(c==null)continue;node.appendChild(c.nodeType?c:document.createTextNode(c))}return node;}
 function deviceById(id){for(var i=0;i<state.devices.length;i++){if(state.devices[i].id===id)return state.devices[i];}return null;}
 function indexById(id){return state.devices.findIndex(function(d){return d.id===id;});}
+
+/* ===================== HIGHLIGHT TUNING ===================== */
+const HI_OUTLINE = 0;
+const HI_RING    = 5;
+const HI_BLUR    = 0;
 </script>
 
 <!-- Core ECCM rendering engine (devices, ports, connections, palette, etc.) -->
@@ -418,7 +442,7 @@ function updateProfileInfo(){
     if(p.can_edit_device||p.can_add_device)badges+='<span class="perm-badge">Devices</span>';
     if(!p.can_patch&&!p.can_add_patch&&!p.can_edit_device&&!p.can_add_device)badges+='<span class="perm-badge">Nur Lesen</span>';
   }
-  info.innerHTML='Eigentümer: '+m.owner+' '+badges;
+  info.innerHTML=T.owner+': '+m.owner+' '+badges;
 }
 
 function switchProfile(name){
@@ -456,7 +480,7 @@ document.getElementById('newProfileBtn').addEventListener('click',function(){
 document.getElementById('newProfCancel').addEventListener('click',function(){document.getElementById('newProfileModal').style.display='none';});
 document.getElementById('newProfCreate').addEventListener('click',function(){
   var name=document.getElementById('newProfName').value.trim();
-  if(!name){alert('Bitte Profilname eingeben.');return;}
+  if(!name){alert(T.enter_profile_name);return;}
   // Collect permissions
   var perms=[];
   document.querySelectorAll('#newProfPermsBody tr').forEach(function(tr){
@@ -475,7 +499,7 @@ document.getElementById('newProfCreate').addEventListener('click',function(){
 /* ── Rename ── */
 document.getElementById('renameProfileBtn').addEventListener('click',function(){
   var cur=store.current;
-  var name=prompt('Profil "'+cur+'" umbenennen zu:',cur);
+  var name=prompt(T.rename+' "'+cur+'":',cur);
   if(!name||!name.trim()||name.trim()===cur)return;
   apiCall('rename_profile',{oldName:cur,newName:name.trim()}).then(function(res){
     if(res.error){alert(res.error);return;}
@@ -485,7 +509,7 @@ document.getElementById('renameProfileBtn').addEventListener('click',function(){
 
 /* ── Duplicate ── */
 document.getElementById('duplicateProfileBtn').addEventListener('click',function(){
-  var name=prompt('Duplikat erstellen als:',store.current+' (Kopie)');
+  var name=prompt(T.duplicate+':',store.current+' (Copy)');
   if(!name||!name.trim())return;
   apiCall('duplicate_profile',{sourceName:store.current,newName:name.trim()}).then(function(res){
     if(res.error){alert(res.error);return;}
@@ -495,8 +519,8 @@ document.getElementById('duplicateProfileBtn').addEventListener('click',function
 
 /* ── Delete ── */
 document.getElementById('deleteProfileBtn').addEventListener('click',function(){
-  if(Object.keys(store.profiles).length<=1){alert('Mindestens ein Profil muss erhalten bleiben.');return;}
-  if(!confirm('Profil "'+store.current+'" wirklich löschen?'))return;
+  if(Object.keys(store.profiles).length<=1){alert(T.min_one_profile);return;}
+  if(!confirm(T.confirm_delete_profile+' "'+store.current+'"?'))return;
   apiCall('delete_profile',{name:store.current}).then(function(res){
     if(res.error){alert(res.error);return;}
     loadFromServer();
@@ -506,7 +530,7 @@ document.getElementById('deleteProfileBtn').addEventListener('click',function(){
 /* ── Permissions modal ── */
 document.getElementById('permProfileBtn').addEventListener('click',function(){
   var m=profileMeta[store.current];
-  if(!m||(!m.is_owner&&!(m.perms||{}).can_manage&&!IS_ADMIN)){alert('Nur der Eigentümer oder ein Verwalter kann Rechte ändern.');return;}
+  if(!m||(!m.is_owner&&!(m.perms||{}).can_manage&&!IS_ADMIN)){alert(T.only_owner_perms);return;}
   document.getElementById('permProfileName').textContent=store.current;
   apiCall('get_permissions',{name:store.current}).then(function(res){
     if(res.error){alert(res.error);return;}
@@ -568,7 +592,7 @@ document.getElementById('importProfileFile').addEventListener('change',function(
       var parsed=JSON.parse(reader.result);
       if(!Array.isArray(parsed.devices)||!Array.isArray(parsed.links))throw new Error('Invalid');
       var suggested=(parsed.profileName||'').toString().trim()||('Import '+new Date().toLocaleString());
-      var name=prompt('Name für importiertes Profil:',suggested);
+      var name=prompt(T.profile_name+':',suggested);
       if(!name||!name.trim())return;
       apiCall('create_profile',{name:name.trim(),permissions:[]}).then(function(res){
         if(res.error){alert(res.error);return;}
@@ -577,7 +601,7 @@ document.getElementById('importProfileFile').addEventListener('change',function(
         state=store.profiles[store.current];normalizeState(state);
         saveStore();loadFromServer();
       });
-    }catch(err){alert('Import fehlgeschlagen: '+err.message);}
+    }catch(err){alert(T.error+': '+err.message);}
     finally{e.target.value='';}
   };
   reader.readAsText(file);
@@ -598,7 +622,7 @@ document.getElementById('restoreAllFile').addEventListener('change',function(e){
     try{
       var parsed=JSON.parse(reader.result);
       if(!parsed.profiles)throw new Error('Keine Profile gefunden');
-      alert('Restore importiert Profile als neue Profile.');
+      alert('Restore: import profiles as new profiles.');
       Object.keys(parsed.profiles).forEach(function(name){
         var safeName=name;var i=1;
         while(store.profiles[safeName])safeName=name+' ('+i++ +')';
@@ -610,7 +634,7 @@ document.getElementById('restoreAllFile').addEventListener('change',function(e){
         });
       });
       setTimeout(loadFromServer,2000);
-    }catch(err){alert('Restore fehlgeschlagen: '+err.message);}
+    }catch(err){alert(T.error+': '+err.message);}
     finally{e.target.value='';}
   };
   reader.readAsText(file);
@@ -620,7 +644,7 @@ document.getElementById('restoreAllFile').addEventListener('change',function(e){
 document.getElementById('searchBox').addEventListener('input',renderConnections);
 document.getElementById('printSheet').addEventListener('click',function(){openPrintSheet(true);});
 document.getElementById('clearAll').addEventListener('click',function(){
-  if(!confirm('ALLE Geräte und Verbindungen in "'+store.current+'" löschen?'))return;
+  if(!confirm(T.clear_all_confirm+' "'+store.current+'"?'))return;
   store.profiles[store.current]=deepClone(defaultState);state=store.profiles[store.current];
   saveStore();render();
 });
@@ -640,6 +664,7 @@ function applySettings(){
   var dp=document.getElementById('devPorts');if(dp){dp.max=String(mp);if(Number(dp.value)>mp)dp.value=String(mp);}
   var mi=document.getElementById('maxPorts');if(mi)mi.value=String(mp);
   var ep=document.getElementById('enablePortRename');if(ep)ep.checked=!!store.settings.enablePortRename;
+  var ul=document.getElementById('userLang');if(ul)ul.value=store.settings.language||'de';
 }
 applySettings();
 var saveSettingsBtn=document.getElementById('saveSettingsBtn');
@@ -647,8 +672,12 @@ if(saveSettingsBtn){
   saveSettingsBtn.addEventListener('click',function(){
     store.settings.maxPorts=Math.max(1,Number(document.getElementById('maxPorts').value)||9999);
     store.settings.enablePortRename=!!document.getElementById('enablePortRename').checked;
+    var newLang=document.getElementById('userLang').value;
+    var langChanged=(store.settings.language||'de')!==newLang;
+    store.settings.language=newLang;
     saveSettings();
     var m=document.getElementById('settingsModal');if(m){m.classList.remove('is-open');m.setAttribute('aria-hidden','true');}
+    if(langChanged)setTimeout(function(){window.location.reload();},800);
   });
 }
 var __orig_changePorts=changePorts;
@@ -738,7 +767,7 @@ document.getElementById('notifSave').addEventListener('click',function(){
       document.getElementById('notifModal').style.display='none';
       showSaveIndicator(false);
     }else{
-      alert(res.error||'Fehler beim Speichern');
+      alert(res.error||T.save_error);
     }
   });
 });

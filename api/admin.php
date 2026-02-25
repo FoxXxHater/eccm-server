@@ -101,6 +101,37 @@ try {
             echo json_encode(['ok' => $ok, 'message' => $ok ? 'Verbindung erfolgreich!' : 'Verbindung fehlgeschlagen.']);
             break;
 
+        /* ── GET GENERAL SETTINGS ─────────────── */
+        case 'get_general_settings':
+            $db = getDB();
+            $db->exec("CREATE TABLE IF NOT EXISTS app_settings (
+                setting_key VARCHAR(100) PRIMARY KEY,
+                setting_value TEXT NOT NULL
+            ) ENGINE=InnoDB");
+            $rows = $db->query('SELECT * FROM app_settings')->fetchAll();
+            $settings = [];
+            foreach ($rows as $r) { $settings[$r['setting_key']] = $r['setting_value']; }
+            // Defaults
+            if (!isset($settings['app_name'])) $settings['app_name'] = 'ECCM';
+            if (!isset($settings['default_language'])) $settings['default_language'] = 'de';
+            echo json_encode(['ok' => true, 'settings' => $settings]);
+            break;
+
+        /* ── SAVE GENERAL SETTINGS ────────────── */
+        case 'save_general_settings':
+            $db = getDB();
+            $db->exec("CREATE TABLE IF NOT EXISTS app_settings (
+                setting_key VARCHAR(100) PRIMARY KEY,
+                setting_value TEXT NOT NULL
+            ) ENGINE=InnoDB");
+            $vals = $input['settings'] ?? [];
+            $ins = $db->prepare('INSERT INTO app_settings (setting_key, setting_value) VALUES (:k, :v) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)');
+            foreach ($vals as $k => $v) {
+                $ins->execute(['k' => $k, 'v' => (string)$v]);
+            }
+            echo json_encode(['ok' => true, 'message' => 'Einstellungen gespeichert.']);
+            break;
+
         /* ── SAVE DB CONFIG ───────────────────────── */
         case 'save_db':
             $cfg  = "<?php\n";
@@ -195,6 +226,85 @@ try {
             echo json_encode(['ok' => $ok, 'message' => $ok ? 'Test-E-Mail gesendet an ' . $testTo . '!' : 'Versand fehlgeschlagen. Prüfe die SMTP-Einstellungen und das Error-Log.']);
             break;
 
+        /* ── GET EMAIL TEMPLATES ───────────────── */
+        case 'get_email_templates':
+            $db = getDB();
+            // Ensure table exists
+            $db->exec("CREATE TABLE IF NOT EXISTS email_templates (
+                template_key VARCHAR(100) PRIMARY KEY,
+                subject_tpl  TEXT NOT NULL,
+                body_tpl     TEXT NOT NULL,
+                updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB");
+
+            $rows = $db->query('SELECT * FROM email_templates ORDER BY template_key')->fetchAll();
+            $templates = [];
+            foreach ($rows as $r) {
+                $templates[$r['template_key']] = ['subject' => $r['subject_tpl'], 'body' => $r['body_tpl']];
+            }
+
+            // Merge with defaults for any missing templates
+            $defaults = getDefaultEmailTemplates();
+            foreach ($defaults as $key => $tpl) {
+                if (!isset($templates[$key])) {
+                    $templates[$key] = $tpl;
+                }
+            }
+
+            echo json_encode(['ok' => true, 'templates' => $templates, 'placeholders' => getTemplatePlaceholders()]);
+            break;
+
+        /* ── SAVE EMAIL TEMPLATES ─────────────── */
+        case 'save_email_templates':
+            $db = getDB();
+            $db->exec("CREATE TABLE IF NOT EXISTS email_templates (
+                template_key VARCHAR(100) PRIMARY KEY,
+                subject_tpl  TEXT NOT NULL,
+                body_tpl     TEXT NOT NULL,
+                updated_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB");
+
+            $tpls = $input['templates'] ?? [];
+            $ins = $db->prepare('INSERT INTO email_templates (template_key, subject_tpl, body_tpl) VALUES (:k, :s, :b) ON DUPLICATE KEY UPDATE subject_tpl = VALUES(subject_tpl), body_tpl = VALUES(body_tpl)');
+            foreach ($tpls as $key => $tpl) {
+                $ins->execute([
+                    'k' => $key,
+                    's' => $tpl['subject'] ?? '',
+                    'b' => $tpl['body'] ?? '',
+                ]);
+            }
+            echo json_encode(['ok' => true, 'message' => 'E-Mail-Vorlagen gespeichert.']);
+            break;
+
+        /* ── RESET EMAIL TEMPLATES TO DEFAULT ── */
+        case 'reset_email_templates':
+            $db = getDB();
+            $db->exec("DELETE FROM email_templates");
+            echo json_encode(['ok' => true, 'message' => 'Vorlagen auf Standard zurückgesetzt.']);
+            break;
+
+        /* ── PREVIEW EMAIL TEMPLATE ────────────── */
+        case 'preview_email_template':
+            $subject = $input['subject'] ?? '';
+            $body = $input['body'] ?? '';
+            $sample = [
+                '{{username}}'     => 'Max Mustermann',
+                '{{profile_name}}' => 'Kunde 01',
+                '{{event_type}}'   => 'Neue Patchung',
+                '{{actor}}'        => 'admin',
+                '{{details}}'      => 'Neue Verbindung: Core Switch Port 5 ↔ Access Switch Port 5',
+                '{{owner}}'        => 'foxxxhater',
+                '{{date}}'         => date('d.m.Y H:i'),
+                '{{app_name}}'     => 'ECCM',
+                '{{base_url}}'     => 'https://eccm.example.com',
+            ];
+            foreach ($sample as $k => $v) {
+                $subject = str_replace($k, $v, $subject);
+                $body = str_replace($k, $v, $body);
+            }
+            echo json_encode(['ok' => true, 'subject' => $subject, 'body' => $body]);
+            break;
+
         default:
             echo json_encode(['error' => 'Unbekannte Aktion: ' . $action]);
     }
@@ -211,4 +321,45 @@ try {
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode(['error' => $e->getMessage()]);
+}
+
+/**
+ * Default email templates with placeholders.
+ */
+function getDefaultEmailTemplates(): array {
+    return [
+        'notification' => [
+            'subject' => '{{app_name}} – {{event_type}} in "{{profile_name}}"',
+            'body'    => "Hallo {{username}},\n\nim Profil \"{{profile_name}}\" gab es eine Änderung:\n\nTyp:      {{event_type}}\nDurch:    {{actor}}\nDetails:  {{details}}\nZeit:     {{date}}\n\n– {{app_name}} Benachrichtigung",
+        ],
+        'password_reset' => [
+            'subject' => '{{app_name}} – Passwort zurücksetzen',
+            'body'    => "Hallo {{username}},\n\nes wurde eine Passwortzurücksetzung angefordert.\n\nKlicke auf den folgenden Link, um dein Passwort zu ändern:\n\n{{reset_url}}\n\nDieser Link ist 1 Stunde gültig.\n\nFalls du das nicht angefordert hast, ignoriere diese E-Mail.\n\n– {{app_name}}",
+        ],
+    ];
+}
+
+/**
+ * Available placeholders per template.
+ */
+function getTemplatePlaceholders(): array {
+    return [
+        'notification' => [
+            '{{username}}'     => 'Name des Empfängers',
+            '{{profile_name}}' => 'Name des Profils/Kunden',
+            '{{event_type}}'   => 'Art der Änderung (z.B. "Neue Patchung")',
+            '{{actor}}'        => 'Benutzername des Verursachers',
+            '{{details}}'      => 'Details zur Änderung',
+            '{{owner}}'        => 'Eigentümer des Profils',
+            '{{date}}'         => 'Datum und Uhrzeit',
+            '{{app_name}}'     => 'App-Name (ECCM)',
+            '{{base_url}}'     => 'Basis-URL der Anwendung',
+        ],
+        'password_reset' => [
+            '{{username}}'   => 'Benutzername',
+            '{{reset_url}}'  => 'Link zum Zurücksetzen',
+            '{{app_name}}'   => 'App-Name (ECCM)',
+            '{{base_url}}'   => 'Basis-URL der Anwendung',
+        ],
+    ];
 }

@@ -53,6 +53,14 @@ eccm/
     └── eccm-core.js       # ECCM-Anwendungslogik
 ```
 
+## Standard-Login
+
+Nach der Installation:
+- **Benutzername:** `admin`
+- **Passwort:** `admin123`
+
+⚠️ **Bitte sofort nach dem ersten Login ändern!**
+
 ## Admin-Funktionen
 
 Im Admin-Panel (`/admin.php`) können Administratoren:
@@ -60,7 +68,6 @@ Im Admin-Panel (`/admin.php`) können Administratoren:
 - Benutzer bearbeiten (Name, E-Mail, Passwort, Rolle)
 - Benutzer löschen
 - Die MySQL-Verbindung ändern und testen
-- Die SMTP Einstellungen festlegen und ändern
 
 ## Passwort zurücksetzen
 
@@ -69,6 +76,4 @@ Im Admin-Panel (`/admin.php`) können Administratoren:
 - Reset-Link wird per E-Mail gesendet (PHP `mail()`)
 - Link ist 1 Stunde gültig
 
-##
-
-Hilfe von Claude erhalten
+Für SMTP-Konfiguration: `includes/config.php` → `$mail_config` anpassen.

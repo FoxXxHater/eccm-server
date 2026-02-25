@@ -97,6 +97,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             UNIQUE KEY uq_user_profile_notif (user_id, profile_id)
         ) ENGINE=InnoDB");
 
+        $pdo->exec("CREATE TABLE IF NOT EXISTS app_settings (
+            setting_key VARCHAR(100) PRIMARY KEY,
+            setting_value TEXT NOT NULL
+        ) ENGINE=InnoDB");
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS email_templates (
+            template_key VARCHAR(100) PRIMARY KEY,
+            subject_tpl TEXT NOT NULL,
+            body_tpl TEXT NOT NULL,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB");
+
+        $pdo->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES ('app_name', 'ECCM') ON DUPLICATE KEY UPDATE setting_key=setting_key")->execute();
+        $pdo->prepare("INSERT INTO app_settings (setting_key, setting_value) VALUES ('default_language', 'de') ON DUPLICATE KEY UPDATE setting_key=setting_key")->execute();
+
         $hash = password_hash($adminPass, PASSWORD_DEFAULT);
         $stmt = $pdo->prepare("INSERT INTO users (username, email, password, role) VALUES (:u, :e, :p, 'admin') ON DUPLICATE KEY UPDATE password = VALUES(password), email = VALUES(email)");
         $stmt->execute(['u' => $adminUser, 'e' => $adminEmail, 'p' => $hash]);

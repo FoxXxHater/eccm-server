@@ -139,8 +139,30 @@ try {
                     exit;
                 }
 
+                $profileId = $perm['profile_id'];
+
+                // Load old data for diff comparison
+                $stmtOld = $db->prepare('SELECT data FROM profiles WHERE id = :pid');
+                $stmtOld->execute(['pid' => $profileId]);
+                $oldJson = $stmtOld->fetchColumn();
+                $oldData = $oldJson ? json_decode($oldJson, true) : null;
+
+                // Save new data
                 $db->prepare('UPDATE profiles SET data = :data WHERE id = :pid')
-                   ->execute(['data' => json_encode($data), 'pid' => $perm['profile_id']]);
+                   ->execute(['data' => json_encode($data), 'pid' => $profileId]);
+
+                // Detect changes and send notifications
+                if ($oldData !== null) {
+                    require_once __DIR__ . '/../includes/notifications.php';
+                    $changes = detectChanges($oldData, $data);
+                    if (!empty($changes)) {
+                        error_log("ECCM: " . count($changes) . " change(s) detected in profile '$profileName' (id=$profileId) by user $userId");
+                    }
+                    foreach ($changes as $ch) {
+                        error_log("ECCM: Notifying for {$ch['type']}: {$ch['details']}");
+                        notifyProfileChange($profileId, $userId, $ch['type'], $ch['details']);
+                    }
+                }
             }
 
             // Save settings (always allowed for own settings)
@@ -368,4 +390,113 @@ function getEffectivePerms(PDO $db, int $userId, string $profileName, bool $isAd
         'can_delete'     => $isOwner || $isAdmin ? 1 : (int)($row['can_delete'] ?? 0),
         'can_manage'     => $isOwner || $isAdmin ? 1 : (int)($row['can_manage'] ?? 0),
     ];
+}
+
+/**
+ * Compare old and new profile data, return list of changes for notifications.
+ */
+function detectChanges(array $old, array $new): array {
+    $changes = [];
+
+    // Safe string helper – converts any value to a safe string for comparison/concatenation
+    $s = function($v) { return is_array($v) || is_object($v) ? json_encode($v) : (string)$v; };
+
+    $oldDevices = $old['devices'] ?? [];
+    $newDevices = $new['devices'] ?? [];
+    $oldLinks   = $old['links'] ?? [];
+    $newLinks   = $new['links'] ?? [];
+
+    // Index devices by ID
+    $oldDevMap = [];
+    foreach ($oldDevices as $d) { if (isset($d['id'])) $oldDevMap[$s($d['id'])] = $d; }
+    $newDevMap = [];
+    foreach ($newDevices as $d) { if (isset($d['id'])) $newDevMap[$s($d['id'])] = $d; }
+
+    // Detect added devices
+    foreach ($newDevMap as $id => $d) {
+        if (!isset($oldDevMap[$id])) {
+            $changes[] = ['type' => 'device_add', 'details' => 'Neues Gerät: "' . $s($d['name'] ?? $id) . '" (' . $s($d['ports'] ?? '?') . ' Ports)'];
+        }
+    }
+
+    // Detect deleted devices
+    foreach ($oldDevMap as $id => $d) {
+        if (!isset($newDevMap[$id])) {
+            $changes[] = ['type' => 'device_change', 'details' => 'Gerät gelöscht: "' . $s($d['name'] ?? $id) . '"'];
+        }
+    }
+
+    // Detect changed devices (name, ports, color)
+    foreach ($newDevMap as $id => $d) {
+        if (!isset($oldDevMap[$id])) continue;
+        $od = $oldDevMap[$id];
+        $diffs = [];
+        if ($s($od['name'] ?? '') !== $s($d['name'] ?? '')) $diffs[] = 'Name: "' . $s($od['name'] ?? '') . '" → "' . $s($d['name'] ?? '') . '"';
+        if (($od['ports'] ?? 0) != ($d['ports'] ?? 0)) $diffs[] = 'Ports: ' . $s($od['ports'] ?? 0) . ' → ' . $s($d['ports'] ?? 0);
+        if ($s($od['color'] ?? '') !== $s($d['color'] ?? '')) $diffs[] = 'Farbe geändert';
+        if (!empty($diffs)) {
+            $changes[] = ['type' => 'device_change', 'details' => 'Gerät "' . $s($d['name'] ?? $id) . '" geändert: ' . implode(', ', $diffs)];
+        }
+    }
+
+    // ── Link handling ──
+    // Links have structure: {id, a:{deviceId, port, sub}, b:{deviceId, port, sub}}
+    // Helper to extract endpoint info safely
+    $endpointKey = function($ep) {
+        if (!is_array($ep)) return '?:?';
+        return ($ep['deviceId'] ?? '?') . ':' . ($ep['port'] ?? '?') . ':' . ($ep['sub'] ?? '');
+    };
+    $linkKey = function($l) use ($endpointKey) {
+        $a = $endpointKey($l['a'] ?? []);
+        $b = $endpointKey($l['b'] ?? []);
+        // Sort to make comparison order-independent
+        return ($a < $b) ? "$a-$b" : "$b-$a";
+    };
+
+    $oldLinkSet = [];
+    foreach ($oldLinks as $l) { if (is_array($l)) $oldLinkSet[$linkKey($l)] = $l; }
+    $newLinkSet = [];
+    foreach ($newLinks as $l) { if (is_array($l)) $newLinkSet[$linkKey($l)] = $l; }
+
+    // Helper to describe a link endpoint nicely
+    $describeEndpoint = function($ep) use ($newDevMap, $oldDevMap) {
+        if (!is_array($ep)) return '?';
+        $devId = $ep['deviceId'] ?? '?';
+        $port = $ep['port'] ?? '?';
+        $sub = $ep['sub'] ?? null;
+        // Resolve device name
+        $devName = $devId;
+        if (isset($newDevMap[$devId])) $devName = $newDevMap[$devId]['name'] ?? $devId;
+        elseif (isset($oldDevMap[$devId])) $devName = $oldDevMap[$devId]['name'] ?? $devId;
+        $portStr = 'Port ' . $port;
+        if ($sub !== null && $sub !== '') $portStr .= '/' . $sub;
+        return $devName . ' ' . $portStr;
+    };
+    $describeLink = function($l) use ($describeEndpoint) {
+        return $describeEndpoint($l['a'] ?? []) . ' ↔ ' . $describeEndpoint($l['b'] ?? []);
+    };
+
+    // Detect added links
+    foreach ($newLinkSet as $key => $l) {
+        if (!isset($oldLinkSet[$key])) {
+            $changes[] = ['type' => 'patch_add', 'details' => 'Neue Verbindung: ' . $describeLink($l)];
+        }
+    }
+
+    // Detect removed links
+    foreach ($oldLinkSet as $key => $l) {
+        if (!isset($newLinkSet[$key])) {
+            $changes[] = ['type' => 'patch_change', 'details' => 'Verbindung entfernt: ' . $describeLink($l)];
+        }
+    }
+
+    // Detect changes in port aliases and reserved ports (compare as JSON)
+    if (json_encode($old['portAliases'] ?? []) !== json_encode($new['portAliases'] ?? [])) {
+        $changes[] = ['type' => 'patch_change', 'details' => 'Port-Aliase geändert'];
+    }
+    if (json_encode($old['reservedPorts'] ?? []) !== json_encode($new['reservedPorts'] ?? [])) {
+        $changes[] = ['type' => 'patch_change', 'details' => 'Reservierte Ports geändert'];
+    }
+
+    return $changes;
 }

@@ -112,17 +112,21 @@ function createPasswordResetToken(string $email): bool {
     $base = rtrim($base, '/');
     $resetUrl = $base . '/reset_password.php?token=' . $token;
 
-    // Send email
+    // Send email using template
     require_once __DIR__ . '/mailer.php';
+    require_once __DIR__ . '/notifications.php';
+    require_once __DIR__ . '/i18n.php';
 
-    $subject = 'ECCM – Passwort zurücksetzen';
-    $body  = "Hallo {$user['username']},\n\n";
-    $body .= "Es wurde eine Passwortzurücksetzung angefordert.\n";
-    $body .= "Klicke auf den folgenden Link, um dein Passwort zu ändern:\n\n";
-    $body .= "$resetUrl\n\n";
-    $body .= "Dieser Link ist 1 Stunde gültig.\n\n";
-    $body .= "Falls du das nicht angefordert hast, ignoriere diese E-Mail.\n\n";
-    $body .= "– ECCM System";
+    $tpl = loadEmailTemplate($db, 'password_reset');
+    $replacements = [
+        '{{username}}'   => $user['username'],
+        '{{reset_url}}'  => $resetUrl,
+        '{{app_name}}'   => getAppName(),
+        '{{base_url}}'   => $base,
+    ];
+
+    $subject = str_replace(array_keys($replacements), array_values($replacements), $tpl['subject']);
+    $body    = str_replace(array_keys($replacements), array_values($replacements), $tpl['body']);
 
     return sendMail($email, $subject, $body);
 }
