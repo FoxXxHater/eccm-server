@@ -8,7 +8,7 @@
 $ECCM_TRANSLATIONS = [
 
 // ── General / Shared ──
-'app_version'         => ['de'=>'1.0.6',      'en'=>'1.0.6'],
+'app_version'         => ['de'=>'1.0.0',      'en'=>'1.0.0'],
 'login'               => ['de'=>'Anmelden',    'en'=>'Login'],
 'logout'              => ['de'=>'Abmelden',    'en'=>'Logout'],
 'admin'               => ['de'=>'Admin',       'en'=>'Admin'],
