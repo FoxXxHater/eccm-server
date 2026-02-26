@@ -8,7 +8,7 @@
 $ECCM_TRANSLATIONS = [
 
 // ── General / Shared ──
-'app_version'         => ['de'=>'1.0.1',      'en'=>'1.0.1'],
+'app_version'         => ['de'=>'1.1.0-alpha',      'en'=>'1.1.0-alpha'],
 'login'               => ['de'=>'Anmelden',    'en'=>'Login'],
 'logout'              => ['de'=>'Abmelden',    'en'=>'Logout'],
 'admin'               => ['de'=>'Admin',       'en'=>'Admin'],
@@ -81,6 +81,7 @@ $ECCM_TRANSLATIONS = [
 'device_name'         => ['de'=>'Name',          'en'=>'Name'],
 'device_ports'        => ['de'=>'Ports',         'en'=>'Ports'],
 'device_colour'       => ['de'=>'Farbe',         'en'=>'Colour'],
+'device_type'         => ['de'=>'Gerätetyp',    'en'=>'Device type'],
 'select_colour'       => ['de'=>'Farbe auswählen',  'en'=>'Select colour'],
 'add_device_btn'      => ['de'=>'Gerät hinzufügen','en'=>'Add device'],
 'clear_all'           => ['de'=>'Alles löschen', 'en'=>'Clear all'],
@@ -198,6 +199,7 @@ $ECCM_TRANSLATIONS = [
 'vlan_color_prompt'   => ['de'=>'Farbe (hex):',   'en'=>'Color (hex):'],
 'clear_reserved_confirm'=>['de'=>'Reservierung für Port aufheben?','en'=>'Clear reserved status for Port'],
 'no_export_perm'      => ['de'=>'Keine Export-Berechtigung für dieses Profil.','en'=>'No export permission for this profile.'],
+'network_topology'    => ['de'=>'Netzwerk-Topologie','en'=>'Network Topology'],
 
 // ── Admin ──
 'admin_title'         => ['de'=>'ECCM Admin',    'en'=>'ECCM Admin'],

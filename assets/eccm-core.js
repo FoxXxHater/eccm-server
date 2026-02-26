@@ -1356,107 +1356,376 @@ function openSpeedMenu(e, deviceId, port, sub){
 
 
 
+/* ===================== NETWORK DIAGRAM SVG ===================== */
+function buildNetworkDiagram(profileName, T_) {
+  var devices = state.devices || [];
+  var links = state.links || [];
+  if (devices.length === 0) return '';
+
+  var ICON_S = 52;
+  var NODE_W = 160, NODE_H = 110;
+  var PAD = 70;
+
+  // Build adjacency
+  var adj = {};
+  devices.forEach(function(d){ adj[d.id] = []; });
+  var edges = [];
+  links.forEach(function(l){
+    if (!l.a || !l.b) return;
+    var aId = l.a.deviceId, bId = l.b.deviceId;
+    if (!aId || !bId || aId === bId) return;
+    if (adj[aId] && adj[aId].indexOf(bId) === -1) adj[aId].push(bId);
+    if (adj[bId] && adj[bId].indexOf(aId) === -1) adj[bId].push(aId);
+    var ek = aId < bId ? aId+'|'+bId : bId+'|'+aId;
+    if (!edges.some(function(e){return e.key===ek;})) {
+      var cnt = links.filter(function(ll){
+        if (!ll.a||!ll.b) return false;
+        return (ll.a.deviceId===aId && ll.b.deviceId===bId) || (ll.a.deviceId===bId && ll.b.deviceId===aId);
+      }).length;
+      edges.push({key:ek, a:aId, b:bId, count:cnt});
+    }
+  });
+
+  // BFS layering from most-connected node
+  var layers = [];
+  var placed = {};
+  var sorted = devices.slice().sort(function(a,b){return (adj[b.id]||[]).length - (adj[a.id]||[]).length;});
+  layers.push([sorted[0]]);
+  placed[sorted[0].id] = true;
+
+  var maxIter = 15;
+  while (Object.keys(placed).length < devices.length && maxIter-- > 0) {
+    var prevLayer = layers[layers.length - 1];
+    var nextLayer = [];
+    prevLayer.forEach(function(d){
+      (adj[d.id]||[]).forEach(function(nid){
+        if (!placed[nid]) {
+          var nd = devices.find(function(dd){return dd.id===nid;});
+          if (nd) { nextLayer.push(nd); placed[nid] = true; }
+        }
+      });
+    });
+    if (nextLayer.length === 0) {
+      devices.forEach(function(d){
+        if (!placed[d.id]) { nextLayer.push(d); placed[d.id] = true; }
+      });
+    }
+    if (nextLayer.length > 0) layers.push(nextLayer);
+  }
+
+  // Calculate canvas
+  var maxPerLayer = 1;
+  layers.forEach(function(l){ if(l.length > maxPerLayer) maxPerLayer = l.length; });
+  var W = Math.max(maxPerLayer * NODE_W + PAD * 2, 900);
+  var H = Math.max(layers.length * NODE_H + PAD * 2, 450);
+
+  // Position nodes centered per layer
+  var positions = {};
+  var LAYER_GAP = (H - PAD*2) / Math.max(layers.length, 1);
+  layers.forEach(function(layer, li) {
+    var totalW = layer.length * NODE_W;
+    var startX = (W - totalW) / 2;
+    layer.forEach(function(d, di) {
+      positions[d.id] = {
+        x: startX + di * NODE_W + NODE_W/2,
+        y: PAD + li * LAYER_GAP + LAYER_GAP/2
+      };
+    });
+  });
+
+  // Device type icon SVG builders (simple, clear, monochrome-ish)
+  function iconRouter(cx,cy,r) {
+    return '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>'
+      +'<line x1="'+(cx-r*0.5)+'" y1="'+cy+'" x2="'+(cx+r*0.5)+'" y2="'+cy+'" stroke="#2563eb" stroke-width="2"/>'
+      +'<line x1="'+cx+'" y1="'+(cy-r*0.5)+'" x2="'+cx+'" y2="'+(cy+r*0.5)+'" stroke="#2563eb" stroke-width="2"/>'
+      +'<polygon points="'+(cx+r*0.5)+','+cy+' '+(cx+r*0.3)+','+(cy-r*0.2)+' '+(cx+r*0.3)+','+(cy+r*0.2)+'" fill="#2563eb"/>'
+      +'<polygon points="'+cx+','+(cy-r*0.5)+' '+(cx-r*0.2)+','+(cy-r*0.3)+' '+(cx+r*0.2)+','+(cy-r*0.3)+'" fill="#2563eb"/>'
+      +'<polygon points="'+(cx-r*0.5)+','+cy+' '+(cx-r*0.3)+','+(cy-r*0.2)+' '+(cx-r*0.3)+','+(cy+r*0.2)+'" fill="#2563eb"/>'
+      +'<polygon points="'+cx+','+(cy+r*0.5)+' '+(cx-r*0.2)+','+(cy+r*0.3)+' '+(cx+r*0.2)+','+(cy+r*0.3)+'" fill="#2563eb"/>';
+  }
+  function iconSwitch(cx,cy,r) {
+    var w=r*1.6, h=r*0.9;
+    var x0=cx-w/2, y0=cy-h/2;
+    var s = '<rect x="'+x0+'" y="'+y0+'" width="'+w+'" height="'+h+'" rx="4" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>';
+    for(var i=0;i<6;i++){
+      var px=x0+w*0.12+i*w*0.14;
+      s+='<rect x="'+px+'" y="'+(y0+h*0.25)+'" width="'+(w*0.08)+'" height="'+(h*0.5)+'" rx="1" fill="#16a34a" opacity="0.7"/>';
+    }
+    return s;
+  }
+  function iconFirewall(cx,cy,r) {
+    var w=r*1.4, h=r*1.4;
+    return '<rect x="'+(cx-w/2)+'" y="'+(cy-h/2)+'" width="'+w+'" height="'+h+'" rx="4" fill="#fef2f2" stroke="#dc2626" stroke-width="2"/>'
+      +'<rect x="'+(cx-w*0.35)+'" y="'+(cy-h*0.2)+'" width="'+(w*0.7)+'" height="'+(h*0.12)+'" rx="1" fill="#dc2626"/>'
+      +'<rect x="'+(cx-w*0.35)+'" y="'+(cy+h*0.02)+'" width="'+(w*0.7)+'" height="'+(h*0.12)+'" rx="1" fill="#dc2626"/>'
+      +'<rect x="'+(cx-w*0.35)+'" y="'+(cy+h*0.22)+'" width="'+(w*0.4)+'" height="'+(h*0.12)+'" rx="1" fill="#dc2626"/>';
+  }
+  function iconServer(cx,cy,r) {
+    var w=r*1.0, h=r*1.6;
+    return '<rect x="'+(cx-w/2)+'" y="'+(cy-h/2)+'" width="'+w+'" height="'+h+'" rx="3" fill="#faf5ff" stroke="#7c3aed" stroke-width="2"/>'
+      +'<line x1="'+(cx-w/2)+'" y1="'+(cy-h*0.15)+'" x2="'+(cx+w/2)+'" y2="'+(cy-h*0.15)+'" stroke="#e2e8f0" stroke-width="1"/>'
+      +'<line x1="'+(cx-w/2)+'" y1="'+(cy+h*0.15)+'" x2="'+(cx+w/2)+'" y2="'+(cy+h*0.15)+'" stroke="#e2e8f0" stroke-width="1"/>'
+      +'<circle cx="'+(cx+w*0.25)+'" cy="'+(cy-h*0.3)+'" r="2.5" fill="#22c55e"/>'
+      +'<circle cx="'+(cx+w*0.25)+'" cy="'+cy+'" r="2.5" fill="#22c55e"/>'
+      +'<circle cx="'+(cx+w*0.25)+'" cy="'+(cy+h*0.3)+'" r="2.5" fill="#f59e0b"/>';
+  }
+  function iconAP(cx,cy,r) {
+    return '<path d="M'+(cx-r*0.7)+','+(cy-r*0.2)+' A'+(r*0.9)+','+(r*0.8)+' 0 0 1 '+(cx+r*0.7)+','+(cy-r*0.2)+'" fill="none" stroke="#2563eb" stroke-width="2"/>'
+      +'<path d="M'+(cx-r*0.4)+','+(cy+r*0.05)+' A'+(r*0.5)+','+(r*0.45)+' 0 0 1 '+(cx+r*0.4)+','+(cy+r*0.05)+'" fill="none" stroke="#2563eb" stroke-width="2"/>'
+      +'<circle cx="'+cx+'" cy="'+(cy+r*0.2)+'" r="3.5" fill="#2563eb"/>'
+      +'<line x1="'+cx+'" y1="'+(cy+r*0.25)+'" x2="'+cx+'" y2="'+(cy+r*0.65)+'" stroke="#475569" stroke-width="2.5"/>'
+      +'<line x1="'+(cx-r*0.35)+'" y1="'+(cy+r*0.65)+'" x2="'+(cx+r*0.35)+'" y2="'+(cy+r*0.65)+'" stroke="#475569" stroke-width="2.5"/>';
+  }
+  function iconModem(cx,cy,r) {
+    var w=r*1.5, h=r*0.9;
+    return '<rect x="'+(cx-w/2)+'" y="'+(cy-h/2)+'" width="'+w+'" height="'+h+'" rx="5" fill="#fff7ed" stroke="#ea580c" stroke-width="2"/>'
+      +'<circle cx="'+(cx-w*0.2)+'" cy="'+cy+'" r="3" fill="#22c55e"/>'
+      +'<circle cx="'+cx+'" cy="'+cy+'" r="3" fill="#f59e0b"/>'
+      +'<circle cx="'+(cx+w*0.2)+'" cy="'+cy+'" r="3" fill="#94a3b8"/>'
+      +'<line x1="'+cx+'" y1="'+(cy-h/2)+'" x2="'+cx+'" y2="'+(cy-h/2-r*0.3)+'" stroke="#475569" stroke-width="2"/>';
+  }
+  function iconPC(cx,cy,r) {
+    var w=r*1.5, h=r*1.0;
+    return '<rect x="'+(cx-w/2)+'" y="'+(cy-h*0.6)+'" width="'+w+'" height="'+h+'" rx="3" fill="#f8fafc" stroke="#475569" stroke-width="2"/>'
+      +'<rect x="'+(cx-w*0.38)+'" y="'+(cy-h*0.45)+'" width="'+(w*0.76)+'" height="'+(h*0.65)+'" rx="1" fill="#e2e8f0"/>'
+      +'<line x1="'+cx+'" y1="'+(cy+h*0.4)+'" x2="'+cx+'" y2="'+(cy+h*0.65)+'" stroke="#475569" stroke-width="2"/>'
+      +'<line x1="'+(cx-r*0.35)+'" y1="'+(cy+h*0.65)+'" x2="'+(cx+r*0.35)+'" y2="'+(cy+h*0.65)+'" stroke="#475569" stroke-width="2.5"/>';
+  }
+  function iconCloud(cx,cy,r) {
+    return '<ellipse cx="'+(cx-r*0.15)+'" cy="'+(cy+r*0.05)+'" rx="'+(r*0.55)+'" ry="'+(r*0.4)+'" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>'
+      +'<ellipse cx="'+(cx+r*0.2)+'" cy="'+(cy-r*0.1)+'" rx="'+(r*0.6)+'" ry="'+(r*0.45)+'" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>'
+      +'<ellipse cx="'+cx+'" cy="'+(cy+r*0.15)+'" rx="'+(r*0.7)+'" ry="'+(r*0.35)+'" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>'
+      +'<ellipse cx="'+cx+'" cy="'+(cy+r*0.15)+'" rx="'+(r*0.7)+'" ry="'+(r*0.25)+'" fill="#eff6ff" stroke="none"/>';
+  }
+  function iconPatchPanel(cx,cy,r) {
+    var w=r*1.7, h=r*0.7;
+    var x0=cx-w/2, y0=cy-h/2;
+    var s='<rect x="'+x0+'" y="'+y0+'" width="'+w+'" height="'+h+'" rx="3" fill="#f8fafc" stroke="#475569" stroke-width="2"/>';
+    for(var i=0;i<8;i++){s+='<rect x="'+(x0+w*0.06+i*w*0.115)+'" y="'+(y0+h*0.22)+'" width="'+(w*0.065)+'" height="'+(h*0.56)+'" rx="1" fill="#64748b" opacity="0.6"/>';}
+    return s;
+  }
+  function iconDefault(cx,cy,r) { return iconSwitch(cx,cy,r); }
+
+  var iconMap = { router:iconRouter, switch:iconSwitch, firewall:iconFirewall, server:iconServer, access_point:iconAP, modem:iconModem, pc:iconPC, cloud:iconCloud, patch_panel:iconPatchPanel, printer:iconDefault, nas:iconServer, phone:iconDefault };
+
+  function drawIcon(type,cx,cy,r) { return (iconMap[type]||iconDefault)(cx,cy,r); }
+
+  // Build SVG
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="100%" style="font-family:system-ui,-apple-system,sans-serif">';
+
+  // Defs
+  svg += '<defs><filter id="ds" x="-5%" y="-5%" width="115%" height="120%"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.06"/></filter></defs>';
+  // Background
+  svg += '<rect width="'+W+'" height="'+H+'" fill="#fafbfc" rx="0"/>';
+
+  // Draw edges (L-shaped routing)
+  edges.forEach(function(e){
+    var pa = positions[e.a], pb = positions[e.b];
+    if (!pa || !pb) return;
+    var lw = Math.min(1.5 + e.count * 0.5, 4);
+    var col = '#94a3b8';
+    if (Math.abs(pa.y - pb.y) < 5) {
+      // Same row: arc above
+      var dy = -50;
+      svg += '<path d="M'+pa.x+' '+(pa.y-42)+' Q '+((pa.x+pb.x)/2)+' '+(pa.y+dy)+' '+pb.x+' '+(pb.y-42)+'" fill="none" stroke="'+col+'" stroke-width="'+lw+'"/>';
+    } else {
+      // Different rows: L-shape from bottom of top card to top of bottom card
+      var ay = pa.y < pb.y ? pa.y : pb.y;
+      var by = pa.y < pb.y ? pb.y : pa.y;
+      var ax = pa.y < pb.y ? pa.x : pb.x;
+      var bx = pa.y < pb.y ? pb.x : pa.x;
+      var fromY = ay + 58; // bottom of top card
+      var toY = by - 42;   // top of bottom card
+      var midY = (fromY + toY) / 2;
+      svg += '<path d="M'+ax+' '+fromY+' L'+ax+' '+midY+' L'+bx+' '+midY+' L'+bx+' '+toY+'" fill="none" stroke="'+col+'" stroke-width="'+lw+'" stroke-linejoin="round"/>';
+    }
+    if (e.count > 1) {
+      var mx = (pa.x+pb.x)/2, my2 = (pa.y+pb.y)/2;
+      svg += '<circle cx="'+mx+'" cy="'+my2+'" r="9" fill="#fff" stroke="#cbd5e1" stroke-width="1"/>';
+      svg += '<text x="'+mx+'" y="'+(my2+3.5)+'" text-anchor="middle" font-size="9" font-weight="700" fill="#64748b">'+e.count+'</text>';
+    }
+  });
+
+  // Draw device nodes
+  devices.forEach(function(d){
+    var pos = positions[d.id];
+    if (!pos) return;
+    var dtype = d.deviceType || 'switch';
+    var iconR = ICON_S / 2;
+
+    // Card (taller to fit labels inside)
+    svg += '<rect x="'+(pos.x-60)+'" y="'+(pos.y-42)+'" width="120" height="100" rx="10" fill="#fff" stroke="#e2e8f0" stroke-width="1.5" filter="url(#ds)"/>';
+    // Icon (shifted up)
+    svg += drawIcon(dtype, pos.x, pos.y - 12, iconR);
+    // Labels inside card
+    var name = (d.name||'Device');
+    if (name.length > 18) name = name.substring(0,16)+'..';
+    svg += '<text x="'+pos.x+'" y="'+(pos.y+28)+'" text-anchor="middle" font-size="10" font-weight="700" fill="#1e293b">'+name+'</text>';
+    var sub = d.ports+' ports';
+    svg += '<text x="'+pos.x+'" y="'+(pos.y+40)+'" text-anchor="middle" font-size="8" fill="#94a3b8">'+sub+'</text>';
+  });
+
+  svg += '</svg>';
+
+  return '<div class="page">'
+    + '<div class="page-header"><h2>' + (T_.network_topology || 'Network Topology') + '</h2><div class="meta">' + profileName + '</div></div>'
+    + '<div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-top:6px">' + svg + '</div>'
+    + '</div>';
+}
+
 /* ===================== PRINT ===================== */
 function openPrintSheet(includeTable){
   var devicesHTML = document.getElementById('devRows').innerHTML;
   var tableEl = document.getElementById('connTable');
   var tableHTML = (includeTable && tableEl) ? tableEl.outerHTML : '';
   var when = new Date().toLocaleString();
+  var profileName = store.current || 'ECCM';
+
+  var totalDevices = state.devices.length;
+  var totalPorts = 0;
+  state.devices.forEach(function(d){ totalPorts += d.ports || 0; });
+  var totalLinks = state.links.length;
+  var totalVlans = (state.vlans || []).length;
+
+  var T_ = (typeof T !== 'undefined') ? T : {};
 
   var css = ''
-+ '@page{size:A4 portrait;margin:12mm}\n'
-+ '@page:first{size:A4 landscape;margin:12mm}\n'
-+ '*{box-sizing:border-box}\n'
-+ '@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}\n'
-+ '.device,.port,.dual-cell,.swatch,header{ -webkit-print-color-adjust:exact; print-color-adjust:exact }\n'
-+ '.page{break-inside:avoid;page-break-inside:avoid}\n'
-+ '.page + .page{break-before:page;page-break-before:always}\n'
-+ ':root{--ink:#111;--line:#ddd;--prtPortH:75px;--prtGap:0px}\n'
-+ '.port{height:var(--prtPortH)!important;box-sizing:border-box;overflow:hidden;display:block}\n'
-+ '.dual-cell{display:flex;flex-direction:column;gap:var(--prtGap);height:calc(var(--prtPortH)*2 + var(--prtGap))!important;box-sizing:border-box;overflow:hidden}\n'
++ '@page{size:A4 landscape;margin:10mm}\n'
++ '*{box-sizing:border-box;margin:0;padding:0}\n'
++ '@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.no-print{display:none!important}}\n'
++ 'html,body{margin:0;padding:0}\n'
++ '.page{page-break-after:always;padding:0 4mm}\n'
++ '.page:last-of-type{page-break-after:auto}\n'
+
+// Cover
++ '.cover{display:flex;flex-direction:column;justify-content:center;align-items:center;height:calc(100vh - 20mm);text-align:center}\n'
++ '.cover-icon{font-size:56px;margin-bottom:12px}\n'
++ '.cover h1{font-size:32px;font-weight:800;color:#1e293b;letter-spacing:-0.5px;margin:0}\n'
++ '.cover .profile-name{font-size:24px;font-weight:600;color:#2563eb;margin:6px 0 20px}\n'
++ '.cover .divider{width:60px;height:3px;background:linear-gradient(90deg,#2563eb,#7c3aed);border-radius:2px;margin:0 auto 20px}\n'
++ '.stats-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}\n'
++ '.stat-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 22px;min-width:100px}\n'
++ '.stat-box .num{font-size:26px;font-weight:800;color:#1e293b}\n'
++ '.stat-box .label{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.6px;margin-top:2px}\n'
++ '.cover .meta{font-size:10px;color:#cbd5e1;margin-top:auto;padding-top:24px}\n'
++ '.cover .meta a{color:#2563eb;text-decoration:none}\n'
+
+// Page headers
++ '.page-header{display:flex;align-items:center;justify-content:space-between;padding:6px 0;margin-bottom:8px;border-bottom:2px solid #e2e8f0}\n'
++ '.page-header h2{font-size:15px;margin:0;font-weight:700;color:#1e293b}\n'
++ '.page-header .meta{font-size:9px;color:#94a3b8}\n'
+
+// Device styles - clean light professional look with subtle hardware feel
++ ':root{--ink:#1e293b;--line:#cbd5e1;--prtPortH:68px;--prtGap:0px}\n'
++ 'body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);background:#fff;margin:0}\n'
++ '.dev-rows{display:flex;flex-direction:column;gap:10px}\n'
++ '.dev-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}\n'
++ '.device-wrap{width:100%}\n'
++ '.device-wrap.full{grid-column:1 / -1}\n'
++ '.device{background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%);border:2px solid #cbd5e1;border-radius:10px;padding:8px 10px;overflow:hidden}\n'
++ '.device-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:2px}\n'
++ '.device-title{font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;color:#1e293b}\n'
++ '.device-sub{font-size:10px;color:#64748b}\n'
++ '.device-actions,.inline-controls{display:none!important}\n'
++ '.swatch{width:10px;height:10px;border-radius:3px;border:1px solid #0003;display:inline-block}\n'
++ '.ports-rows{display:flex;flex-direction:column;gap:5px;margin-top:6px;overflow:hidden}\n'
++ '.port-row{display:grid!important;justify-content:start;align-content:start}\n'
++ '.device-wrap.full .port-row{grid-template-columns:repeat(12,minmax(34px,1fr))!important;gap:6px !important}\n'
++ '.device-wrap:not(.full) .port-row{grid-template-columns:repeat(6,minmax(34px,1fr))!important;gap:5px !important}\n'
+
+// Ports - clean, light, with colored top-bar accent
++ '.port{height:var(--prtPortH)!important;box-sizing:border-box;overflow:hidden;display:block;border-radius:5px;padding:4px 2px 3px;text-align:center;grid-column:auto!important;width:auto!important;border:1.5px solid #cbd5e1;background:#fff;position:relative}\n'
++ '.port::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;border-radius:5px 5px 0 0}\n'
++ '.port:not(.connected):not(.reserved){background:#fff !important;border-color:#cbd5e1 !important}\n'
++ '.port:not(.connected):not(.reserved)::before{background:#e2e8f0}\n'
++ '.port:not(.connected):not(.reserved) .num{color:#64748b !important}\n'
++ '.port:not(.connected):not(.reserved) .alias,.port:not(.connected):not(.reserved) .peer{color:#94a3b8 !important}\n'
++ '.port.connected{border-color:#3b82f6;background:#fff}\n'
++ '.port.connected::before{background:#3b82f6}\n'
++ '.port.connected .num{font-weight:700;color:#1e293b}\n'
++ '.port.connected .peer{color:#2563eb}\n'
++ '.port.reserved{background:#fef2f2 !important;border-color:#fca5a5 !important}\n'
++ '.port.reserved::before{background:#ef4444}\n'
++ '.port.reserved .num,.port.reserved .alias,.port.reserved .peer{color:#dc2626 !important}\n'
++ '.port .num{font-size:10px;font-weight:600;margin-top:2px}\n'
++ '.port .alias{font-size:8px;margin-top:1px;min-height:0.9em;color:#64748b}\n'
++ '.port .peer{font-size:9px;font-weight:600;margin-top:2px;min-height:1em}\n'
++ '.dual-cell{display:flex;flex-direction:column;gap:var(--prtGap);height:calc(var(--prtPortH)*2 + var(--prtGap))!important;box-sizing:border-box;overflow:hidden;border-color:#cbd5e1 !important}\n'
 + '.dual-cell .port{height:var(--prtPortH)!important;border:0!important;border-radius:0!important}\n'
-+ '.dual-cell .port:first-child{border-bottom:1px solid #333!important}\n'
++ '.dual-cell .port:first-child{border-bottom:1px solid #e2e8f0!important}\n'
 
-  + '*{box-sizing:border-box}\n'
-  + 'body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);background:#fff;margin:0}\n'
-  + '.page{max-width:calc(297mm - 16mm);margin:10mm auto}\n'
-  + 'header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}\n'
-  + 'h1{font-size:18px;margin:0}\n'
-  + '.meta{font-size:12px;color:#555}\n'
-  + '.dev-rows{display:flex;flex-direction:column;gap:12px}\n'
-  + '.dev-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}\n'
-  + '.device-wrap{width:100%}\n'
-  + '.device-wrap.full{grid-column:1 / -1}\n'
-  + '.device{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;overflow:hidden}\n'
-  + '.device-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}\n'
-  + '.device-title{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}\n'
-  + '.device-actions,.inline-controls{display:none!important}\n'
-  + '.swatch{width:12px;height:12px;border-radius:3px;border:1px solid #0003;display:inline-block}\n'
-  + '.ports-rows{display:flex;flex-direction:column;gap:8px;margin-top:10px;overflow:hidden}\n'
-  + '.port-row{display:grid;justify-content:start;align-content:start}\n'
-  + '.device-wrap.full .port-row{grid-template-columns:repeat(12,minmax(40px,1fr));gap:10px !important;}\n'
-  + '.device-wrap:not(.full) .port-row{grid-template-columns:repeat(6,minmax(40px,1fr));gap:7px !important;}\n'
-  /* --------------------------------------------------------------------------- */
-  + '.port{border:1px solid #333;border-radius:8px;padding:6px 3px 4px;text-align:center;grid-column:auto!important;width:auto!important}\n'
-  + '.port .num{font-size:12px;font-weight:600}\n'
-  + '.port .alias{font-size:11px;margin-top:2px;min-height:1.1em}\n'
-  + '.port .peer{font-size:12px;font-weight:700;margin-top:4px;min-height:1.2em}\n'
-  + '.port:not(.connected):not(.reserved){background:#fff !important;border-color:#444 !important}\n'
-  + '.port:not(.connected):not(.reserved) .num,'
-  + '.port:not(.connected):not(.reserved) .alias,'
-  + '.port:not(.connected):not(.reserved) .peer{color:#000 !important}\n'
-  + '.port.connected{color:#000}\n'
-  + '.port.reserved{background:#555 !important;color:#fff !important;border-color:#333 !important}\n'
-  + '.dual-cell{border-color:#333 !important}\n'
-  + '.port.reserved .num,.port.reserved .alias,.port.reserved .peer{color:#fff !important}\n'
-  + 'table{width:100%;border-collapse:collapse;margin-top:16px}\n'
-  + 'th,td{border:1px solid var(--line);padding:6px 8px;font-size:12px;text-align:left}\n'
-  + 'th{background:#f6f7f9;font-weight:700}\n'
-  + 'th:last-child, td:last-child{display:none}\n'
-  + '@media print{.controls{display:none};}\n';
+// Connection table
++ '.conn-table{width:100%;border-collapse:collapse;margin-top:6px;font-size:11px}\n'
++ '.conn-table th{background:#f1f5f9;color:#475569;padding:7px 8px;font-size:10px;text-transform:uppercase;letter-spacing:0.4px;border:1px solid #e2e8f0;font-weight:700}\n'
++ '.conn-table td{padding:6px 8px;border:1px solid #e2e8f0}\n'
++ '.conn-table tr:nth-child(even){background:#fafbfc}\n'
++ '.conn-table th:last-child,.conn-table td:last-child{display:none}\n'
++ '@media print{.no-print{display:none!important}}\n';
 
-
-  var html = ''
-  + '<!doctype html><html><head><meta charset="utf-8">'
-  + '<title>Ethernet Cable Connection Manager – Print</title><style>' + css + '</style></head><body>'
-  + '<div class="page">'
-  + '<header><h1>Profile: ' + store.current + '</h1><div class="meta">' + 'Ethernet Cable Connection Manager: <a href="https://https://github.com/bijomaru78/eccm" target="_blank">https://github.com/bijomaru78/eccm</a> - Printed on '+when+'</div></header>' 
-  + '<section id="printDevices" class="dev-rows">' + devicesHTML + '</section>'
-  + (tableHTML ? '<div class="page"><h2 style="font-size:16px;margin:18px 0 8px">Connections</h2>' + tableHTML + '</div>' : '')
-  + '<div class="controls" style="margin-top:12px"><button onclick="window.print()">Print</button></div>'
+  // Cover page
+  var coverHTML = '<div class="page cover">'
+  + '<div class="cover-icon">🔌</div>'
+  + '<h1>Ethernet Cable Connection Manager</h1>'
+  + '<div class="divider"></div>'
+  + '<div class="profile-name">' + profileName + '</div>'
+  + '<div class="stats-row">'
+  + '<div class="stat-box"><div class="num">' + totalDevices + '</div><div class="label">' + (T_.devices || 'Devices') + '</div></div>'
+  + '<div class="stat-box"><div class="num">' + totalPorts + '</div><div class="label">Ports</div></div>'
+  + '<div class="stat-box"><div class="num">' + totalLinks + '</div><div class="label">' + (T_.connections || 'Connections') + '</div></div>'
+  + (totalVlans ? '<div class="stat-box"><div class="num">' + totalVlans + '</div><div class="label">VLANs</div></div>' : '')
   + '</div>'
+  + '<div class="meta">' + when + '<br><a href="https://github.com/FoxXxHater/eccm-server">github.com/FoxXxHater/eccm-server</a></div>'
+  + '</div>';
+
+  // Devices page
+  var devicesPage = '<div class="page">'
+  + '<div class="page-header"><h2>' + (T_.devices || 'Devices') + '</h2><div class="meta">' + profileName + '</div></div>'
+  + '<section id="printDevices" class="dev-rows">' + devicesHTML + '</section>'
+  + '</div>';
+
+  // Connections page
+  var connPage = '';
+  if (tableHTML) {
+    connPage = '<div class="page">'
+    + '<div class="page-header"><h2>' + (T_.connections || 'Connections') + '</h2><div class="meta">' + profileName + '</div></div>'
+    + tableHTML.replace('<table', '<table class="conn-table"')
+    + '</div>';
+  }
+
+  // Topology diagram page
+  var diagramPage = buildNetworkDiagram(profileName, T_);
+
+  var html = '<!doctype html><html><head><meta charset="utf-8">'
+  + '<title>ECCM – ' + profileName + '</title><style>' + css + '</style></head><body>'
+  + coverHTML + devicesPage + connPage + diagramPage
+  + '<div class="no-print" style="text-align:center;padding:16px"><button onclick="window.print()" style="padding:10px 24px;font-size:14px;border-radius:8px;border:none;cursor:pointer;background:#2563eb;color:#fff;font-weight:600">Print / PDF</button></div>'
   + '<script>(function(){'
-  + '  var GAP_FULL=9, GAP_HALF=7, MIN_TRACK=40;'
+  + '  var GAP_FULL=6, GAP_HALF=5, MIN_TRACK=34;'
   + '  function sizeRows(){'
   + '    var rows=document.querySelectorAll(".port-row,[data-port-row]");'
   + '    for(var i=0;i<rows.length;i++){'
   + '      var row=rows[i];'
   + '      var wrap=row.closest(".device-wrap");'
-  + '      row.style.display = "grid";'
-  + '      row.style.justifyContent = "start";'
-  + '      row.style.alignContent = "start";'
-  + '      row.style.gridAutoFlow = "row";'
-  + '      var isFull = wrap && wrap.classList.contains("full");'
-  + '      var cols   = isFull ? 12 : 6;'
-  + '      var gap    = isFull ? GAP_FULL : GAP_HALF;'
-  + '      var inner = row.getBoundingClientRect().width;'
-  + '      if(inner && inner > 0){'
-  + '        var track = Math.floor((inner - gap * (cols - 1)) / cols);'
-  + '        if (!(track > 0)) track = 60;'
-  + '        if (track < MIN_TRACK) track = MIN_TRACK;'
-  + '		 track += -3;'
-  + '        row.style.gridTemplateColumns = "repeat(" + cols + ", " + track + "px)";'
+  + '      var isFull=wrap&&wrap.classList.contains("full");'
+  + '      var cols=isFull?12:6;var gap=isFull?GAP_FULL:GAP_HALF;'
+  + '      row.style.display="grid";row.style.justifyContent="start";row.style.alignContent="start";row.style.gridAutoFlow="row";'
+  + '      row.style.gap=gap+"px";'
+  + '      var inner=row.getBoundingClientRect().width;'
+  + '      if(inner&&inner>0){'
+  + '        var track=Math.floor((inner-gap*(cols-1))/cols);'
+  + '        if(!(track>0))track=50;if(track<MIN_TRACK)track=MIN_TRACK;'
+  + '        row.style.gridTemplateColumns="repeat("+cols+","+track+"px)";'
+  + '      } else {'
+  + '        row.style.gridTemplateColumns="repeat("+cols+",1fr)";'
   + '      }'
-  + '      row.style.gap = gap + "px";'
   + '    }'
   + '  }'
-  + '  requestAnimationFrame(function(){ requestAnimationFrame(sizeRows); });'
-  + '  Array.prototype.forEach.call(document.querySelectorAll(".port"),function(p){'
-  + '    if(!p.classList.contains("connected") && !p.classList.contains("reserved")){'
-  + '      p.style.background=""; p.style.color="";'
-  + '      p.querySelectorAll(".num,.alias,.peer").forEach(function(el){ el.style.color=""; });'
-  + '    }'
+  + '  /* Remove inline grid styles that reference missing CSS vars */'
+  + '  Array.prototype.forEach.call(document.querySelectorAll(".port-row"),function(row){'
+  + '    row.style.gridTemplateColumns="";row.style.gap="";'
   + '  });'
+  + '  /* Wait for layout, then fix sizing */'
+  + '  setTimeout(function(){sizeRows();setTimeout(sizeRows,100);},50);'
   + '  Array.prototype.forEach.call(document.querySelectorAll("[draggable]"),function(el){el.removeAttribute("draggable");});'
   + '})();<\/script>'
   + '</body></html>';
@@ -1465,14 +1734,10 @@ function openPrintSheet(includeTable){
   win.document.open();
   win.document.write(html);
   win.document.close();
-  
   win.onload = function() {
-  win.focus();
-  setTimeout(function() {
-    win.print();
-    win.close();
-  }, 30); 
-};
+    win.focus();
+    setTimeout(function() { win.print(); win.close(); }, 50);
+  };
 }
 
 
@@ -1810,6 +2075,8 @@ function openEditDeviceModal(deviceId) {
   portsInput.value = d.ports || 1;
   editChosenColor = d.color || '#888';
   preview.style.background = editChosenColor;
+  var typeSelect = document.getElementById('editDevType');
+  if (typeSelect) typeSelect.value = d.deviceType || '';
 	const speedOptions = [
 	  '', '100 Mbit', '1 Gbit', '2.5 Gbit', '5 Gbit',
 	  '10 Gbit', '25 Gbit', '40 Gbit', '100 Gbit'
@@ -1893,6 +2160,8 @@ document.getElementById('editDevSave').addEventListener('click', function() {
   currentEditDevice.color = editChosenColor;
   const speedSel = document.getElementById('editDevMaxSpeed');
   currentEditDevice.maxSpeed = speedSel ? speedSel.value || null : null;
+  var typeSelect = document.getElementById('editDevType');
+  currentEditDevice.deviceType = typeSelect ? typeSelect.value || '' : '';
   saveStore(); render();
   closeEditDeviceModal();
 });
