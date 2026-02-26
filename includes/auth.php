@@ -9,7 +9,7 @@ require_once __DIR__ . '/config.php';
 function startSecureSession(): void {
     if (session_status() === PHP_SESSION_NONE) {
         // Compatible with PHP 7.0+
-        session_set_cookie_params(0, '/', '', false, true);
+        session_set_cookie_params(604800, '/', '', false, true); // 7 days
         session_start();
     }
 }
@@ -98,17 +98,22 @@ function createPasswordResetToken(string $email): bool {
        ->execute(['uid' => $user['id']]);
 
     $token = bin2hex(random_bytes(32));
-    $expires = date('Y-m-d H:i:s', time() + ($app_config['token_lifetime'] ?? 3600));
+    $lifetime = (int)($app_config['token_lifetime'] ?? 3600);
 
-    $db->prepare('INSERT INTO password_resets (user_id, token, expires_at) VALUES (:uid, :token, :expires)')
-       ->execute(['uid' => $user['id'], 'token' => $token, 'expires' => $expires]);
+    $db->prepare('INSERT INTO password_resets (user_id, token, expires_at) VALUES (:uid, :token, DATE_ADD(NOW(), INTERVAL ' . $lifetime . ' SECOND))')
+       ->execute(['uid' => $user['id'], 'token' => $token]);
 
     // Build reset URL
-    $base = $mail_config['base_url'] ?: (
-        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') .
-        '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') .
-        dirname($_SERVER['SCRIPT_NAME'] ?? '')
-    );
+    $base = !empty($mail_config['base_url']) ? $mail_config['base_url'] : '';
+    if ($base === '') {
+        $proto = 'http';
+        if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') $proto = 'https';
+        elseif (!empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) $proto = $_SERVER['HTTP_X_FORWARDED_PROTO'];
+        elseif (!empty($_SERVER['HTTP_X_FORWARDED_SSL']) && $_SERVER['HTTP_X_FORWARDED_SSL'] === 'on') $proto = 'https';
+        $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? 'localhost');
+        $dir = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\');
+        $base = $proto . '://' . $host . $dir;
+    }
     $base = rtrim($base, '/');
     $resetUrl = $base . '/reset_password.php?token=' . $token;
 
@@ -136,13 +141,22 @@ function createPasswordResetToken(string $email): bool {
  */
 function resetPasswordWithToken(string $token, string $newPassword): bool {
     $db = getDB();
+    $token = trim(preg_replace('/\s+/', '', $token));
 
-    $stmt = $db->prepare(
-        'SELECT * FROM password_resets WHERE token = :token AND used = 0 AND expires_at > NOW() LIMIT 1'
-    );
+    // Check token exists and is unused
+    $stmt = $db->prepare('SELECT * FROM password_resets WHERE token = :token AND used = 0 LIMIT 1');
     $stmt->execute(['token' => $token]);
     $row = $stmt->fetch();
     if (!$row) return false;
+
+    // Check expiry with timezone fallback
+    $stmt2 = $db->prepare('SELECT 
+        (expires_at > NOW()) AS not_expired_by_expiry,
+        (created_at > DATE_SUB(NOW(), INTERVAL 2 HOUR)) AS not_expired_by_created
+        FROM password_resets WHERE id = :id');
+    $stmt2->execute(['id' => $row['id']]);
+    $check = $stmt2->fetch();
+    if (!$check || (!$check['not_expired_by_expiry'] && !$check['not_expired_by_created'])) return false;
 
     $hash = password_hash($newPassword, PASSWORD_DEFAULT);
     $db->prepare('UPDATE users SET password = :pw WHERE id = :uid')

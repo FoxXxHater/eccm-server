@@ -6,18 +6,43 @@ detectLanguage();
 $t = function($k){ return __t($k); };
 $appName = getAppName();
 
-$token   = $_GET['token'] ?? '';
+$token   = trim(preg_replace('/\s+/', '', $_GET['token'] ?? ''));
 $message = '';
 $success = false;
 $valid   = false;
 
 if ($token !== '') {
     $db = getDB();
-    $stmt = $db->prepare('SELECT * FROM password_resets WHERE token = :token AND used = 0 AND expires_at > NOW() LIMIT 1');
+    // First: check if token exists at all (regardless of expiry)
+    $stmt = $db->prepare('SELECT id, used, expires_at, created_at FROM password_resets WHERE token = :token LIMIT 1');
     $stmt->execute(['token' => $token]);
-    $valid = (bool)$stmt->fetch();
+    $row = $stmt->fetch();
+    
+    if ($row) {
+        if ($row['used']) {
+            // Token was already used
+            $message = $t('reset_invalid_token');
+        } else {
+            // Check expiry: use created_at + lifetime as fallback if timezone mismatch
+            $stmt2 = $db->prepare('SELECT 
+                (expires_at > NOW()) AS not_expired_by_expiry,
+                (created_at > DATE_SUB(NOW(), INTERVAL 2 HOUR)) AS not_expired_by_created
+                FROM password_resets WHERE id = :id');
+            $stmt2->execute(['id' => $row['id']]);
+            $check = $stmt2->fetch();
+            
+            if ($check && ($check['not_expired_by_expiry'] || $check['not_expired_by_created'])) {
+                $valid = true;
+            } else {
+                $message = $t('reset_invalid_token');
+            }
+        }
+    } else {
+        // Token not found in DB at all
+        $message = $t('reset_invalid_token');
+    }
 }
-if (!$valid && $_SERVER['REQUEST_METHOD'] === 'GET') {
+if (!$valid && $_SERVER['REQUEST_METHOD'] === 'GET' && $message === '') {
     $message = $t('reset_invalid_token');
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

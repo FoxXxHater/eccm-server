@@ -66,10 +66,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             can_add_device TINYINT(1) NOT NULL DEFAULT 0,
             can_delete TINYINT(1) NOT NULL DEFAULT 0,
             can_manage TINYINT(1) NOT NULL DEFAULT 0,
+            can_export TINYINT(1) NOT NULL DEFAULT 0,
+            can_backup TINYINT(1) NOT NULL DEFAULT 0,
             FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             UNIQUE KEY uq_profile_user (profile_id, user_id)
         ) ENGINE=InnoDB");
+
+        // Migration: add columns if missing (existing installations)
+        try { $pdo->exec("ALTER TABLE profile_permissions ADD COLUMN can_export TINYINT(1) NOT NULL DEFAULT 0"); } catch(Exception $e) {}
+        try { $pdo->exec("ALTER TABLE profile_permissions ADD COLUMN can_backup TINYINT(1) NOT NULL DEFAULT 0"); } catch(Exception $e) {}
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS user_active_profile (
             user_id INT PRIMARY KEY,

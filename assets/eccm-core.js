@@ -76,10 +76,47 @@ function setVlanFor(deviceId, port, sub, val){
   state.portVlans = state.portVlans || {};
   if (val==null || val==='') { delete state.portVlans[k]; }
   else {
-    var n = Math.max(1, Math.min(4094, Number(val)||0)); // clamp 1–4094
+    var n = Math.max(1, Math.min(4094, Number(val)||0));
     state.portVlans[k] = n;
   }
   saveStore();
+}
+
+/* -- Port individual color -- */
+function portColorFor(deviceId, port, sub){
+  return (state.portColors || {})[keyFor(deviceId,port,sub)] || '';
+}
+function setPortColor(deviceId, port, sub, color){
+  var k = keyFor(deviceId,port,sub);
+  state.portColors = state.portColors || {};
+  if (!color || color === '') { delete state.portColors[k]; }
+  else { state.portColors[k] = color; }
+}
+
+/* -- VLAN definitions (per profile) -- */
+function getVlans(){ return state.vlans || []; }
+function getVlanById(vid){ return (state.vlans||[]).find(function(v){return v.id===vid;}) || null; }
+
+/* -- Port VLAN assignments (multiple VLANs per port) -- */
+function getPortVlanIds(deviceId, port, sub){
+  return (state.portVlanAssignments || {})[keyFor(deviceId,port,sub)] || [];
+}
+function setPortVlanIds(deviceId, port, sub, vlanIds){
+  var k = keyFor(deviceId,port,sub);
+  state.portVlanAssignments = state.portVlanAssignments || {};
+  if (!vlanIds || !vlanIds.length) { delete state.portVlanAssignments[k]; }
+  else { state.portVlanAssignments[k] = vlanIds; }
+}
+
+/* -- Port notes (max 30 chars) -- */
+function portNoteFor(deviceId, port, sub){
+  return (state.portNotes || {})[keyFor(deviceId,port,sub)] || '';
+}
+function setPortNote(deviceId, port, sub, note){
+  var k = keyFor(deviceId,port,sub);
+  state.portNotes = state.portNotes || {};
+  if (!note || !note.trim()) { delete state.portNotes[k]; }
+  else { state.portNotes[k] = note.trim().substring(0, 150); }
 }
 function linkedToOverrideFor(deviceId, port, sub){
   return (state.portLinkedTo || {})[keyFor(deviceId, port, sub)] || '';
@@ -447,20 +484,34 @@ if (linked && !hasSpeed) {
 
 
 var leftInd  = el('span',{class:'ind spd-dot'}, '');
+
+// Build VLAN dots (one colored dot per assigned VLAN)
+var assignedVlans = (typeof getPortVlanIds === 'function') ? getPortVlanIds(d.id, p, sub) : [];
+var vlanDotsEl = el('span',{class:'vlan-dots'});
+var vlanTooltipParts = [];
+assignedVlans.forEach(function(vid){
+  var vdef = (typeof getVlanById === 'function') ? getVlanById(vid) : null;
+  if (!vdef) return;
+  var dot = el('span',{class:'vlan-dot'});
+  dot.style.background = vdef.color || '#888';
+  dot.title = 'VLAN ' + vdef.vid + (vdef.name ? ' - ' + vdef.name : '');
+  vlanTooltipParts.push(dot.title);
+  vlanDotsEl.appendChild(dot);
+});
+
+// Legacy single VLAN indicator (diamond) if no new VLANs assigned
 var rightInd = el('span',{class:'ind vlan-diamond'}, '');
+if (hasVlan && assignedVlans.length === 0){
+  rightInd.title = String(vlanVal);
+} else {
+  rightInd.classList.add('ind--off');
+}
 
 if (hasSpeed){
   leftInd.title = spdVal;
 } else {
   leftInd.classList.add('ind--off');
 }
-
-if (hasVlan){
-  rightInd.title = String(vlanVal);
-} else {
-  rightInd.classList.add('ind--off');
-}
-
 
 
 var portLabel = 
@@ -470,23 +521,16 @@ var portLabel =
 var numEl = el('div',{class:'num'},
   leftInd,
   el('span',{class:'num-label'}, portLabel),
+  vlanDotsEl,
   rightInd
 );
 
 function bindMiniHover(indEl, label, value){
-  if(!indEl || indEl.classList.contains('ind--off')) return;
-  indEl.addEventListener('mouseenter', function(e){
-    hcShowForTarget(indEl,
-      '<div class="hc-title">'+label+'</div><div>'+value+'</div>', e);
-  });
-  indEl.addEventListener('mousemove', function(e){
-    hcShowForTarget(indEl,
-      '<div class="hc-title">'+label+'</div><div>'+value+'</div>', e);
-  });
-  indEl.addEventListener('mouseleave', hcHide);
+  // Disabled - main port hover shows all info now
 }
 bindMiniHover(leftInd,  'Link speed', spdVal);
 bindMiniHover(rightInd, 'VLAN',  String(vlanVal));
+// VLAN dots hover handled by main port hover
 // Slow-link indicator: port speed < device max → add "!" before speed square
 (function () {
   var dev = deviceById(d.id);
@@ -559,6 +603,9 @@ var peerEl = el(
   } else {
     paintPortBase(node, '#0f141d');
   }
+  // Override with individual port color if set
+  var portClr = portColorFor(d.id, p, sub);
+  if (portClr) { paintPortBase(node, portClr); }
 
   node.addEventListener('click', function(ev){
     if (ev.altKey){
@@ -625,17 +672,26 @@ var peerEl = el(
   });
 
   function buildHoverHTML() {
-    var liveAlias = aliasFor(d.id, p, sub) || '—';
-    var liveSpeed = (typeof speedFor === 'function' ? fmtSpeed(speedFor(d.id, p, sub)) : '') || '—';
+    var liveAlias = aliasFor(d.id, p, sub) || '';
+    var liveSpeed = (typeof speedFor === 'function' ? fmtSpeed(speedFor(d.id, p, sub)) : '') || '';
+    var liveNote = (typeof portNoteFor === 'function' ? portNoteFor(d.id, p, sub) : '') || '';
 
     var vlanRaw  = (typeof vlanFor==='function' ? vlanFor(d.id, p, sub) : '');
-    var vlanText = (vlanRaw === '' ? '—' : vlanRaw);
+    var vlanText = (vlanRaw === '' ? '' : String(vlanRaw));
+
+    // VLAN assignments
+    var vlanAssigns = (typeof getPortVlanIds === 'function') ? getPortVlanIds(d.id, p, sub) : [];
+    var vlanLines = [];
+    vlanAssigns.forEach(function(vid){
+      var vdef = (typeof getVlanById === 'function') ? getVlanById(vid) : null;
+      if (vdef) vlanLines.push('<span class="vlan-dot" style="background:'+(vdef.color||'#888')+';width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:3px"></span>VLAN ' + vdef.vid + (vdef.name ? ' - ' + vdef.name : ''));
+    });
 
     var liveReserved = typeof isReservedPort === 'function' && isReservedPort(d.id, p, sub);
     var liveLink = linkForPort(d.id, p, sub);
-    var status = liveReserved ? 'Reserved' : (liveLink ? 'Linked' : 'Free');
+    var status = liveReserved ? (typeof T!=='undefined'&&T.status_reserved||'Reserved') : (liveLink ? (typeof T!=='undefined'&&T.status_linked||'Linked') : (typeof T!=='undefined'&&T.status_free||'Free'));
 
-    var peerTxt = '—';
+    var peerTxt = '';
     if (liveReserved) {
       peerTxt = (typeof reservedLabelFor === 'function' && reservedLabelFor(d.id, p, sub)) || 'Reserved';
     } else if (liveLink) {
@@ -647,26 +703,26 @@ var peerEl = el(
       }
     }
 
-    return (
-      '<div class="hc-title">' + (d.name || 'Device') + '</div>' +
-      '<div class="hc-row"><div class="hc-k">Port</div><div>' +
-        p + (sub != null ? '/' + (sub + 1) : '') + '</div></div>' +
-      '<div class="hc-row"><div class="hc-k">Alias</div><div>' + liveAlias + '</div></div>' +
-      '<div class="hc-row"><div class="hc-k">Peer</div><div>' + peerTxt + '</div></div>'+	
-      '<div class="hc-row"><div class="hc-k">Status</div><div>' + status + '</div></div>' +
-      '<div class="hc-row"><div class="hc-k">Link speed</div><div>' + liveSpeed + '</div></div>' +
-      '<div class="hc-row"><div class="hc-k">VLAN</div><div>' + vlanText  + '</div></div>'
-    );
+    var html = '<div class="hc-title">' + (d.name || 'Device') + '</div>' +
+      '<div class="hc-row"><div class="hc-k">'+(typeof T!=='undefined'&&T.hover_port||'Port')+'</div><div>' + p + (sub != null ? '/' + (sub + 1) : '') + '</div></div>';
+    if (liveAlias) html += '<div class="hc-row"><div class="hc-k">'+(typeof T!=='undefined'&&T.hover_alias||'Alias')+'</div><div>' + liveAlias + '</div></div>';
+    if (peerTxt) html += '<div class="hc-row"><div class="hc-k">'+(typeof T!=='undefined'&&T.hover_peer||'Peer')+'</div><div>' + peerTxt + '</div></div>';
+    html += '<div class="hc-row"><div class="hc-k">'+(typeof T!=='undefined'&&T.hover_status||'Status')+'</div><div>' + status + '</div></div>';
+    if (liveSpeed) html += '<div class="hc-row"><div class="hc-k">'+(typeof T!=='undefined'&&T.hover_speed||'Speed')+'</div><div>' + liveSpeed + '</div></div>';
+    if (vlanText) html += '<div class="hc-row"><div class="hc-k">VLAN</div><div>' + vlanText + '</div></div>';
+    if (vlanLines.length) html += '<div class="hc-row"><div class="hc-k">VLANs</div><div>' + vlanLines.join('<br>') + '</div></div>';
+    if (liveNote) html += '<div class="hc-row"><div class="hc-k">'+(typeof T!=='undefined'&&T.hover_note||'Note')+'</div><div>' + liveNote + '</div></div>';
+    return html;
   }
 
-	node.addEventListener('mouseenter', function (e) {
-	  if (__menuOpen || !node.classList.contains('selected')) return;
-	  hcShowForTarget(node, buildHoverHTML(), e);
-	});
-	node.addEventListener('mousemove', function (e) {
-	  if (__menuOpen || !node.classList.contains('selected')) return;
-	  hcShowForTarget(node, buildHoverHTML(), e);
-	});
+  node.addEventListener('mouseenter', function (e) {
+    if (__menuOpen) return;
+    hcShowForTarget(node, buildHoverHTML(), e);
+  });
+  node.addEventListener('mousemove', function (e) {
+    if (__menuOpen) return;
+    hcShowForTarget(node, buildHoverHTML(), e);
+  });
 
   node.addEventListener('mouseleave', function () { hcHide(); });
 
@@ -782,6 +838,15 @@ function renderConnections() {
     var aColor = da ? (da.color || '#ccc') : '#ccc';
     var bColor = db ? (db.color || '#ccc') : '#ccc';
 
+    // Build VLAN text for this connection (from A side)
+    var connVlanIds = (typeof getPortVlanIds === 'function') ? getPortVlanIds(L.a.deviceId, L.a.port, L.a.sub) : [];
+    var vlanTexts = [];
+    connVlanIds.forEach(function(vid){
+      var vdef = (typeof getVlanById === 'function') ? getVlanById(vid) : null;
+      if (vdef) vlanTexts.push(String(vdef.vid));
+    });
+    var vlanCellText = vlanTexts.join(', ');
+
     var tr = el(
       'tr',
       { class: 'conn-row', dataset: { linkId: L.id } },
@@ -801,6 +866,7 @@ function renderConnections() {
       ),
       el('td', {}, bPortLabel),
       el('td', {}, bAlias),
+      el('td', {style:'font-size:11px;color:var(--muted)'}, vlanCellText),
       el(
         'td',
         {},
@@ -1054,56 +1120,83 @@ function openSpeedMenu(e, deviceId, port, sub){
   div.className = 'speed-menu';
 
   div.innerHTML =
-    '<div style="font-size:12px;margin-bottom:6px;font-weight:600">Port settings</div>' +
+    '<div style="font-size:12px;margin-bottom:6px;font-weight:600">'+(typeof T!=='undefined'&&T.port_settings||'Port settings')+'</div>' +
 
     (store.settings.enablePortRename ? (
       '<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px">' +
-        '<label for="__nameInput" style="margin:0;white-space:nowrap;min-width:70px">Port name</label>' +
+        '<label for="__nameInput" style="margin:0;white-space:nowrap;min-width:70px">'+(typeof T!=='undefined'&&T.port_name||'Port name')+'</label>' +
         '<input id="__nameInput" type="text" placeholder="e.g. Channel 1" ' +
                'style="flex:1;padding:4px 6px;font-size:12px;border-radius:6px;' +
                       'border:1px solid var(--line);background:var(--bg);color:var(--ink)">' +
-        '<button id="__nameReset" type="button" title="Reset to default" ' +
+        '<button id="__nameReset" type="button" title="'+(typeof T!=="undefined"&&T.reset_default||"Reset to default")+'" ' +
                'style="padding:4px 6px;font-size:11px;border-radius:6px;border:1px solid var(--line);' +
                       'background:var(--bg);color:var(--ink);cursor:pointer;">↺</button>' +
       '</div>'
     ) : '') +
 
     '<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px">' +
-      '<label for="__aliasInput" style="margin:0;white-space:nowrap;min-width:70px">Alias</label>' +
+      '<label for="__aliasInput" style="margin:0;white-space:nowrap;min-width:70px">'+(typeof T!=='undefined'&&T.port_alias||'Alias')+'</label>' +
       '<input id="__aliasInput" type="text" placeholder="Alias (optional)" ' +
              'style="flex:1;padding:4px 6px;font-size:12px;border-radius:6px;' +
                     'border:1px solid var(--line);background:var(--bg);color:var(--ink)">' +
     '</div>' +
 
     '<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px">' +
-      '<label for="__speedSelect" style="margin:0;white-space:nowrap;min-width:70px">Link speed</label>' +
+      '<label for="__speedSelect" style="margin:0;white-space:nowrap;min-width:70px">'+(typeof T!=='undefined'&&T.link_speed||'Link speed')+'</label>' +
       '<select id="__speedSelect" style="flex:1">' +
-        '<option value="">(none)</option>' +
+        '<option value="">'+(typeof T!=='undefined'&&T.speed_none||'(none)')+'</option>' +
         '<option>100 Mbit</option><option>1 Gbit</option><option>2.5 Gbit</option>' +
         '<option>5 Gbit</option><option>10 Gbit</option><option>25 Gbit</option>' +
         '<option>40 Gbit</option><option>100 Gbit</option>' +
       '</select>' +
     '</div>' +
 
-    '<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px">' +
-      '<label for="__vlanInput" style="margin:0;white-space:nowrap;min-width:70px">VLAN</label>' +
-      '<input id="__vlanInput" type="number" min="1" max="4094" step="1" placeholder="1–4094" ' +
-             'style="flex:1;padding:4px 6px;font-size:12px;border-radius:6px;border:1px solid var(--line);' +
-                    'background:var(--bg);color:var(--ink)">' +
+    // --- VLAN assignments (multi-select) ---
+    (function(){
+      var vlans = getVlans();
+      if (!vlans.length) return '';
+      var curIds = getPortVlanIds(deviceId, port, sub);
+      var html = '<div style="font-size:11px;color:var(--muted);margin-bottom:2px">VLANs</div>' +
+        '<div id="__vlanChecks" style="max-height:100px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:4px 6px;margin-bottom:6px;background:var(--bg)">';
+      vlans.forEach(function(v){
+        var checked = curIds.indexOf(v.id) >= 0 ? ' checked' : '';
+        html += '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;padding:1px 0">' +
+          '<input type="checkbox" data-vlan-id="'+v.id+'"'+checked+' style="width:14px;height:14px">' +
+          '<span class="vlan-dot" style="background:'+(v.color||'#888')+';width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0"></span>' +
+          '<span>'+v.vid+' '+(v.name||'')+'</span></label>';
+      });
+      html += '</div>';
+      return html;
+    })() +
+
+    // --- Port color ---
+    '<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px">' +
+      '<label style="margin:0;white-space:nowrap;min-width:70px">'+(typeof T!=='undefined'&&T.port_color||'Port color')+'</label>' +
+      '<input id="__portColorInput" type="color" value="' + (portColorFor(deviceId,port,sub)||'#0f141d') + '" ' +
+             'style="width:28px;height:24px;border:1px solid var(--line);border-radius:4px;padding:0;cursor:pointer;background:var(--bg)">' +
+      '<button id="__portColorReset" type="button" title="'+(typeof T!=="undefined"&&T.reset_color||"Reset color")+'" ' +
+             'style="padding:4px 6px;font-size:11px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;">↺</button>' +
+    '</div>' +
+
+    // --- Notes ---
+    '<div style="display:flex;gap:6px;font-size:12px;margin-bottom:6px">' +
+      '<label for="__noteInput" style="margin:0;white-space:nowrap;min-width:70px;padding-top:3px">Note</label>' +
+      '<textarea id="__noteInput" maxlength="150" rows="4" placeholder="'+(typeof T!=='undefined'&&T.port_note_ph||'Notes...')+'" ' +
+             'style="flex:1;padding:4px 6px;font-size:12px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);resize:vertical;font-family:inherit">' + (portNoteFor(deviceId,port,sub)||'').replace(/</g,'&lt;') + '</textarea>' +
     '</div>' +
 
     // --- LINKED TO (editable) + reset button ---
     '<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:8px">' +
-      '<label for="__linkedToInput" style="margin:0;white-space:nowrap;min-width:70px">Linked to</label>' +
+      '<label for="__linkedToInput" style="margin:0;white-space:nowrap;min-width:70px">'+(typeof T!=='undefined'&&T.linked_to||'Linked to')+'</label>' +
       '<input id="__linkedToInput" type="text" placeholder="(auto)" ' +
              'style="flex:1;min-width:160px;padding:4px 6px;font-size:12px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink)">' +
-      '<button id="__linkedToReset" type="button" title="Revert to automatic value" ' +
+      '<button id="__linkedToReset" type="button" title="'+(typeof T!=="undefined"&&T.revert_auto||"Revert to automatic value")+'" ' +
              'style="padding:4px 6px;font-size:11px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;">↺</button>' +
     '</div>' +
 
     '<div style="display:flex;gap:6px;justify-content:flex-end">' +
-      '<button id="__speedCancel" class="btn" type="button">Cancel</button>' +
-      '<button id="__speedSave"   class="btn" type="button" style="font-weight:700">Save</button>' +
+      '<button id="__speedCancel" class="btn" type="button">'+(typeof T!=='undefined'&&T.cancel||'Cancel')+'</button>' +
+      '<button id="__speedSave"   class="btn" type="button" style="font-weight:700">'+(typeof T!=='undefined'&&T.save||'Save')+'</button>' +
     '</div>';
 
   document.body.appendChild(div);
@@ -1131,19 +1224,17 @@ function openSpeedMenu(e, deviceId, port, sub){
   // Fill current values
   var ain = div.querySelector('#__aliasInput');
   var sel = div.querySelector('#__speedSelect');
-  var vin = div.querySelector('#__vlanInput');
   var lnk = div.querySelector('#__linkedToInput');
 
   ain.value = aliasFor(deviceId, port, sub) || '';
   sel.value = curSpeed || '';
-  vin.value = curVlanStr;
   if (lnk) lnk.value = linkedToValue || '';
 
   // Linked-to reset (confirm → revert to automatic)
   var lnkReset = div.querySelector('#__linkedToReset');
   if (lnkReset && lnk) {
     lnkReset.addEventListener('click', function(){
-      if (!confirm('Revert "Linked to" back to the automatic value?')) return;
+      if (!confirm(typeof T!=='undefined'&&T.revert_auto_confirm||'Revert "Linked to" back to the automatic value?')) return;
       setLinkedToOverrideFor(deviceId, port, sub, '');
       lnk.value = defaultLinkedTo || '';
       // No render needed yet; saving happens on "Save" too, but this keeps state correct immediately.
@@ -1153,11 +1244,22 @@ function openSpeedMenu(e, deviceId, port, sub){
   // Position menu
   var x = e.clientX, y = e.clientY;
   var vw = window.innerWidth, vh = window.innerHeight;
-  var rw = 320, rh = 170;
+  var rw = 340, rh = 300;
   if (x + rw + 8 > vw) x = vw - rw - 8;
-  if (y + rh + 8 > vh) y = vh - rh - 8;
+  if (y + rh + 8 > vh) y = Math.max(4, vh - rh - 8);
   div.style.left = x + 'px';
   div.style.top  = y + 'px';
+
+  // Port color reset
+  var pcResetBtn = div.querySelector('#__portColorReset');
+  var pcColorIn = div.querySelector('#__portColorInput');
+  if (pcResetBtn && pcColorIn) {
+    pcResetBtn.addEventListener('click', function(){
+      pcColorIn.value = '#0f141d';
+      pcColorIn.dataset.wasReset = '1';
+    });
+    pcColorIn.addEventListener('input', function(){ pcColorIn.dataset.wasReset = '0'; });
+  }
 
   function doSave(){
     // Save port name (if enabled)
@@ -1176,12 +1278,40 @@ function openSpeedMenu(e, deviceId, port, sub){
     if (!aliasRaw) delete state.portAliases[aliasKey];
     else state.portAliases[aliasKey] = aliasRaw;
 
-    // Speed + VLAN
+    // Speed
     var speedVal = sel.value || '';
-    var vlanRaw  = vin.value.trim();
-    var vlanVal  = vlanRaw === '' ? '' : Math.max(1, Math.min(4094, Number(vlanRaw) || 0));
     setSpeedFor(deviceId, port, sub, speedVal);
-    setVlanFor(deviceId, port, sub, vlanVal);
+
+    // VLAN assignments (multi-select) + sync to peer
+    var vlanChecks = div.querySelectorAll('#__vlanChecks input[type=checkbox]');
+    var selectedVlans = [];
+    vlanChecks.forEach(function(cb){ if(cb.checked) selectedVlans.push(cb.dataset.vlanId); });
+    setPortVlanIds(deviceId, port, sub, selectedVlans);
+    // Sync VLANs to peer side
+    var syncPeer = getPeer(deviceId, port, sub);
+    if (syncPeer) {
+      setPortVlanIds(syncPeer.deviceId, syncPeer.port, syncPeer.sub, selectedVlans);
+    }
+
+    // Port color + sync to peer
+    var pcInput = div.querySelector('#__portColorInput');
+    var pcReset = div.querySelector('#__portColorReset');
+    if (pcInput) {
+      var wasReset = pcInput.dataset.wasReset === '1';
+      if (wasReset) {
+        setPortColor(deviceId, port, sub, '');
+        if (syncPeer) setPortColor(syncPeer.deviceId, syncPeer.port, syncPeer.sub, '');
+      } else {
+        setPortColor(deviceId, port, sub, pcInput.value);
+        if (syncPeer) setPortColor(syncPeer.deviceId, syncPeer.port, syncPeer.sub, pcInput.value);
+      }
+    }
+
+    // Notes
+    var noteIn = div.querySelector('#__noteInput');
+    if (noteIn) {
+      setPortNote(deviceId, port, sub, noteIn.value);
+    }
 
     // Linked-to override (store only if different from default)
     if (lnk) {
@@ -1193,6 +1323,7 @@ function openSpeedMenu(e, deviceId, port, sub){
       }
     }
 
+    saveStore();
     render();
     closeSpeedMenu();
   }
@@ -1201,10 +1332,6 @@ function openSpeedMenu(e, deviceId, port, sub){
   div.querySelector('#__speedCancel').addEventListener('click', closeSpeedMenu);
 
   // Enter/Escape convenience
-  vin.addEventListener('keydown', function(ev){
-    if (ev.key === 'Enter') doSave();
-    if (ev.key === 'Escape') closeSpeedMenu();
-  });
   if (lnk) {
     lnk.addEventListener('keydown', function(ev){
       if (ev.key === 'Enter') doSave();
@@ -1219,7 +1346,11 @@ function openSpeedMenu(e, deviceId, port, sub){
     function onEsc(e2){ if (e2.key==='Escape') closeSpeedMenu(); }
     document.addEventListener('mousedown', onDoc, { once:true, capture:true });
     document.addEventListener('keydown', onEsc, { once:true });
-    window.addEventListener('wheel', closeSpeedMenu, { once:true, passive:true });
+    window.addEventListener('wheel', function onWheel(e2){
+      if (__speedMenu && __speedMenu.contains(e2.target)) return;
+      closeSpeedMenu();
+      window.removeEventListener('wheel', onWheel);
+    }, { passive:true });
   }, 0);
 }
 

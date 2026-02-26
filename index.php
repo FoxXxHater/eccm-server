@@ -70,6 +70,9 @@ button:hover{border-color:#2a2f3b}
 .port .ind{width:5px;height:5px;display:inline-block;border-radius:1px;background:currentColor;opacity:.9;line-height:0;flex:0 0 auto;vertical-align:middle}
 .port .ind.ind--slow{width:10px;height:10px;border-radius:2px;background:#fff;color:#e11;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700}
 .port .ind.vlan-diamond{transform:rotate(45deg)}.port .ind.ind--off{opacity:0;pointer-events:none}
+.vlan-dots{display:inline-flex;gap:2px;align-items:center;flex-shrink:0;margin-left:1px}
+.vlan-dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0;cursor:default;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+html.theme-bright .vlan-dot{box-shadow:0 0 0 1px rgba(0,0,0,.15)}
 .slow-warn{font-size:10px;line-height:1;display:inline-block;vertical-align:middle}
 .grid-slim{width:100%;border-collapse:collapse;border:1px solid var(--line);border-radius:8px;overflow:hidden;table-layout:fixed}
 .grid-slim th,.grid-slim td{font-size:13px;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -95,6 +98,7 @@ button:hover{border-color:#2a2f3b}
 .modal select{background:#0f131b;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
 .modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
 /* Theme bright overrides */
+html.theme-bright{--bg:#f5f6f8;--panel:#fff;--ink:#111;--paper:#fff;--muted:#666;--line:#d8dee8;--reserved-bg:#999;--hover-bg:#f0f1f3;--hover-border:#ccd2dc;--hover-ink:#111}
 html.theme-bright body,html.theme-bright .card,html.theme-bright aside,html.theme-bright main,html.theme-bright #settingsPanel{background:#fff!important;color:#111!important;border-color:#ccc!important;--muted:#222;--paper:#fff}
 html.theme-bright .slideover__panel,html.theme-bright .slideover__header,html.theme-bright .slideover__footer,html.theme-bright .slideover__body{background:#fff!important;color:#111!important;border-color:#ddd!important;--paper:#fff;--ink:#111}
 html.theme-bright .slideover__panel .card{background:#f8f9fa!important;border-color:#ddd!important}
@@ -147,8 +151,14 @@ html.theme-bright{--hover-bg:#fffffe;--hover-border:#cfd6e4;--hover-ink:#111}
 .hovercard .hc-title{font-weight:700;margin-bottom:4px}.hovercard .hc-row{display:flex;gap:8px}.hovercard .hc-k{color:var(--muted);min-width:72px}
 .speed-menu{position:fixed;z-index:9999;background:#141821;color:#e8eaf1;border:1px solid var(--line);border-radius:8px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
 .speed-menu select{background:#0f131b;color:#e8eaf1;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px}
-html.theme-bright .speed-menu{background:#fff;color:#111;border-color:#ccc}
+html.theme-bright .speed-menu{background:#fff;color:#111;border-color:#ccc;box-shadow:0 8px 24px rgba(0,0,0,.12)}
 html.theme-bright .speed-menu select{background:#fff;color:#111;border-color:#ccc}
+html.theme-bright .speed-menu input[type=text],html.theme-bright .speed-menu input[type=number]{background:#fff!important;color:#111!important;border-color:#ccc!important}
+html.theme-bright .speed-menu label{color:#333!important}
+html.theme-bright .speed-menu .btn{background:#f5f6f8!important;color:#111!important;border-color:#ccc!important}
+html.theme-bright .speed-menu #__vlanChecks{background:#f8f9fb!important;border-color:#ddd!important;color:#111!important}
+html.theme-bright .speed-menu #__vlanChecks label{color:#111!important}
+html.theme-bright .speed-menu #__portColorReset,html.theme-bright .speed-menu #__linkedToReset,html.theme-bright .speed-menu #__nameReset{background:#f5f6f8!important;color:#111!important;border-color:#ccc!important}
 html.theme-bright .user-info a{background:#fff!important;color:#111!important;border:1px solid #ccc!important}
 html.theme-bright .port .ind.ind--slow{background:#000;color:#e11}
 html.theme-bright .port .ind{opacity:.8}
@@ -207,8 +217,6 @@ html.theme-bright .perm-badge{background:#e2e8f0;color:#475569}
       <button id="deleteProfileBtn" class="btn-danger"><?=$t('delete')?></button>
       <button id="permProfileBtn" class="btn" title="<?=$t('manage_perms')?>"><?=$t('permissions')?></button>
       <button id="exportProfileBtn" class="btn"><?=$t('export')?></button>
-      <button id="importProfileBtn" class="btn"><?=$t('import')?></button>
-      <input id="importProfileFile" type="file" accept=".json,application/json" style="display:none">
     </div>
   </div>
   <div class="card">
@@ -228,16 +236,18 @@ html.theme-bright .perm-badge{background:#e2e8f0;color:#475569}
     <div class="small muted" style="margin-top:6px"><?=$t('port_help')?><br><strong><?=$t('unlink_help')?></strong><br><strong><?=$t('alias_help')?></strong><br><strong><?=$t('reserve_help')?></strong></div>
   </div>
   <div class="card">
-    <h3><?=$t('backup_restore')?></h3>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button id="backupAllBtn" class="btn"><?=$t('backup_all')?></button>
-      <button id="restoreAllBtn" class="btn"><?=$t('restore_all')?></button>
-      <input id="restoreAllFile" type="file" accept=".json,application/json" style="display:none">
-    </div>
-  </div>
-  <div class="card">
     <h3><?=$t('find_connection')?></h3>
     <input id="searchBox" type="text" placeholder="<?=$t('search_placeholder')?>" />
+  </div>
+  <div class="card">
+    <h3>VLANs</h3>
+    <div id="vlanList" style="margin-bottom:8px"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <input id="vlanVid" type="number" min="1" max="4094" placeholder="VLAN ID" style="width:70px;padding:5px 6px;font-size:12px">
+      <input id="vlanName" type="text" placeholder="Name" style="flex:1;min-width:60px;padding:5px 6px;font-size:12px">
+      <input id="vlanColor" type="color" value="#3b82f6" style="width:28px;height:26px;padding:0;border:1px solid var(--line);border-radius:4px;cursor:pointer">
+      <button id="vlanAddBtn" class="btn" style="padding:5px 10px;font-size:12px">+</button>
+    </div>
   </div>
 </aside>
 
@@ -246,7 +256,7 @@ html.theme-bright .perm-badge{background:#e2e8f0;color:#475569}
   <div class="card">
     <h3><?=$t('connections')?></h3>
     <table class="grid-slim" id="connTable">
-      <thead><tr><th>#</th><th><?=$t('conn_device_a')?></th><th><?=$t('conn_port')?></th><th><?=$t('conn_alias')?></th><th>⇄</th><th><?=$t('conn_device_b')?></th><th><?=$t('conn_port')?></th><th><?=$t('conn_alias')?></th><th></th></tr></thead>
+      <thead><tr><th>#</th><th><?=$t('conn_device_a')?></th><th><?=$t('conn_port')?></th><th><?=$t('conn_alias')?></th><th>⇄</th><th><?=$t('conn_device_b')?></th><th><?=$t('conn_port')?></th><th><?=$t('conn_alias')?></th><th>VLANs</th><th></th></tr></thead>
       <tbody id="connBody"></tbody>
     </table>
     <div class="small muted"><?=$t('conn_highlight_hint')?></div>
@@ -291,7 +301,7 @@ html.theme-bright .perm-badge{background:#e2e8f0;color:#475569}
   <h4 style="margin-top:14px"><?=$t('perms_for_others')?></h4>
   <div class="small muted" style="margin-bottom:8px"><?=$t('perms_owner_hint')?></div>
   <table class="perm-table" id="newProfPermsTable">
-    <thead><tr><th><?=$t('username')?></th><th><?=$t('perm_view')?></th><th><?=$t('perm_patch')?></th><th><?=$t('perm_add_patch')?></th><th><?=$t('perm_edit_device')?></th><th><?=$t('perm_add_device')?></th><th><?=$t('perm_delete')?></th><th><?=$t('perm_manage')?></th></tr></thead>
+    <thead><tr><th><?=$t('username')?></th><th><?=$t('perm_view')?></th><th><?=$t('perm_patch')?></th><th><?=$t('perm_add_patch')?></th><th><?=$t('perm_edit_device')?></th><th><?=$t('perm_add_device')?></th><th><?=$t('perm_delete')?></th><th><?=$t('perm_manage')?></th><th><?=$t('perm_export')?></th><th><?=$t('perm_backup')?></th></tr></thead>
     <tbody id="newProfPermsBody"></tbody>
   </table>
   <div class="actions" style="margin-top:14px"><button id="newProfCancel"><?=$t('cancel')?></button><button id="newProfCreate" class="btn-primary"><?=$t('create')?></button></div>
@@ -302,7 +312,7 @@ html.theme-bright .perm-badge{background:#e2e8f0;color:#475569}
   <h4><?=$t('manage_perms')?>: <span id="permProfileName"></span></h4>
   <div class="small muted" style="margin-bottom:8px"><?=$t('owner_admin_hint')?></div>
   <table class="perm-table">
-    <thead><tr><th><?=$t('username')?></th><th><?=$t('perm_view')?></th><th><?=$t('perm_patch')?></th><th><?=$t('perm_add_patch')?></th><th><?=$t('perm_edit_device')?></th><th><?=$t('perm_add_device')?></th><th><?=$t('perm_delete')?></th><th><?=$t('perm_manage')?></th></tr></thead>
+    <thead><tr><th><?=$t('username')?></th><th><?=$t('perm_view')?></th><th><?=$t('perm_patch')?></th><th><?=$t('perm_add_patch')?></th><th><?=$t('perm_edit_device')?></th><th><?=$t('perm_add_device')?></th><th><?=$t('perm_delete')?></th><th><?=$t('perm_manage')?></th><th><?=$t('perm_export')?></th><th><?=$t('perm_backup')?></th></tr></thead>
     <tbody id="permModalBody"></tbody>
   </table>
   <div class="actions" style="margin-top:14px"><button id="permCancel"><?=$t('cancel')?></button><button id="permSave" class="btn-primary"><?=$t('save')?></button></div>
@@ -334,7 +344,7 @@ var CURRENT_USER_ID = <?=$userId?>;
 var IS_ADMIN = <?=$isAdmin?'true':'false'?>;
 var T = <?=getTranslationsJSON()?>;
 
-var defaultState = {devices:[],links:[],portAliases:{},reservedPorts:{},portSpeeds:{},portVlans:{},portLinkedTo:{}};
+var defaultState = {devices:[],links:[],portAliases:{},reservedPorts:{},portSpeeds:{},portVlans:{},portLinkedTo:{},portColors:{},vlans:[],portVlanAssignments:{},portNotes:{}};
 function deepClone(o){return JSON.parse(JSON.stringify(o));}
 function uid(){return 'id_'+Math.random().toString(36).slice(2,10);}
 
@@ -347,6 +357,8 @@ function normalizeState(st){
   st.links=Array.isArray(st.links)?st.links:[];
   st.portAliases=st.portAliases||{};st.reservedPorts=st.reservedPorts||{};
   st.portSpeeds=st.portSpeeds||{};st.portLinkedTo=st.portLinkedTo||{};
+  st.portColors=st.portColors||{};st.vlans=Array.isArray(st.vlans)?st.vlans:[];
+  st.portVlanAssignments=st.portVlanAssignments||{};st.portNotes=st.portNotes||{};
   st.devices.forEach(function(d){
     if(d.forceFullRow===undefined)d.forceFullRow=false;
     if(d.midWrapMode===undefined)d.midWrapMode='balanced';
@@ -360,7 +372,7 @@ function normalizeState(st){
 /* ── Current profile permissions ── */
 function currentPerms(){
   var m=profileMeta[store.current];
-  if(!m)return{can_view:1,can_patch:1,can_add_patch:1,can_edit_device:1,can_add_device:1,can_delete:1,can_manage:1};
+  if(!m)return{can_view:1,can_patch:1,can_add_patch:1,can_edit_device:1,can_add_device:1,can_delete:1,can_manage:1,can_export:1,can_backup:1};
   return m.perms||{};
 }
 
@@ -379,7 +391,8 @@ function saveStore(){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify(payload)
-    }).then(function(r){return r.json();}).then(function(res){
+    }).then(function(r){if(r.status===401){window.location.href='login.php';return null;}return r.json();}).then(function(res){
+      if(!res)return;
       showSaveIndicator(!res.ok);
     }).catch(function(){showSaveIndicator(true);});
   },600);
@@ -397,7 +410,7 @@ function apiCall(action,data){
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify(Object.assign({action:action},data||{}))
-  }).then(function(r){return r.json();});
+  }).then(function(r){if(r.status===401){window.location.href='login.php';return null;}return r.json();});
 }
 
 /* ===================== DOM HELPERS ===================== */
@@ -414,7 +427,7 @@ const HI_BLUR    = 0;
 </script>
 
 <!-- Core ECCM rendering engine (devices, ports, connections, palette, etc.) -->
-<script src="assets/eccm-core.js"></script>
+<script src="assets/eccm-core.js?v=<?=time()?>"></script>
 
 <script>
 /* ===================== PROFILES UI (server-backed) ===================== */
@@ -443,6 +456,9 @@ function updateProfileInfo(){
     if(!p.can_patch&&!p.can_add_patch&&!p.can_edit_device&&!p.can_add_device)badges+='<span class="perm-badge">Nur Lesen</span>';
   }
   info.innerHTML=T.owner+': '+m.owner+' '+badges;
+  // Show/hide export button based on permission
+  var expBtn=document.getElementById('exportProfileBtn');
+  if(expBtn) expBtn.style.display=(m.is_owner||IS_ADMIN||(p.can_export))?'':'none';
 }
 
 function switchProfile(name){
@@ -471,7 +487,9 @@ document.getElementById('newProfileBtn').addEventListener('click',function(){
         +'<td><input type="checkbox" data-p="can_edit_device"></td>'
         +'<td><input type="checkbox" data-p="can_add_device"></td>'
         +'<td><input type="checkbox" data-p="can_delete"></td>'
-        +'<td><input type="checkbox" data-p="can_manage"></td>';
+        +'<td><input type="checkbox" data-p="can_manage"></td>'
+        +'<td><input type="checkbox" data-p="can_export"></td>'
+        +'<td><input type="checkbox" data-p="can_backup"></td>';
       tb.appendChild(tr);
     });
     document.getElementById('newProfileModal').style.display='flex';
@@ -552,7 +570,9 @@ document.getElementById('permProfileBtn').addEventListener('click',function(){
           +'<td><input type="checkbox" data-p="can_edit_device" '+(ep.can_edit_device?'checked':'')+'></td>'
           +'<td><input type="checkbox" data-p="can_add_device" '+(ep.can_add_device?'checked':'')+'></td>'
           +'<td><input type="checkbox" data-p="can_delete" '+(ep.can_delete?'checked':'')+'></td>'
-          +'<td><input type="checkbox" data-p="can_manage" '+(ep.can_manage?'checked':'')+'></td>';
+          +'<td><input type="checkbox" data-p="can_manage" '+(ep.can_manage?'checked':'')+'></td>'
+          +'<td><input type="checkbox" data-p="can_export" '+(ep.can_export?'checked':'')+'></td>'
+          +'<td><input type="checkbox" data-p="can_backup" '+(ep.can_backup?'checked':'')+'></td>';
         tb.appendChild(tr);
       });
       document.getElementById('permModal').style.display='flex';
@@ -575,69 +595,23 @@ document.getElementById('permSave').addEventListener('click',function(){
   });
 });
 
-/* ── Export / Import ── */
+/* ── Export ── */
 document.getElementById('exportProfileBtn').addEventListener('click',function(){
-  var data={profileName:store.current,devices:state.devices,links:state.links,portAliases:state.portAliases,reservedPorts:state.reservedPorts,exportedAt:new Date().toISOString()};
+  var meta = profileMeta[store.current];
+  if (meta && !meta.is_owner && meta.perms && !meta.perms.can_export) {
+    alert(T.no_export_perm);
+    return;
+  }
+  var data={profileName:store.current,devices:state.devices,links:state.links,
+    portAliases:state.portAliases,reservedPorts:state.reservedPorts,
+    portSpeeds:state.portSpeeds,portVlans:state.portVlans,portLinkedTo:state.portLinkedTo,
+    portColors:state.portColors,vlans:state.vlans,portVlanAssignments:state.portVlanAssignments,
+    portNotes:state.portNotes,
+    exportedAt:new Date().toISOString()};
   var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   var url=URL.createObjectURL(blob);var a=document.createElement('a');
   a.href=url;a.download='eccm-profile-'+store.current.replace(/[^a-z0-9_-]+/gi,'_')+'.json';
   document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
-});
-document.getElementById('importProfileBtn').addEventListener('click',function(){document.getElementById('importProfileFile').click();});
-document.getElementById('importProfileFile').addEventListener('change',function(e){
-  var file=e.target.files&&e.target.files[0];if(!file)return;
-  var reader=new FileReader();
-  reader.onload=function(){
-    try{
-      var parsed=JSON.parse(reader.result);
-      if(!Array.isArray(parsed.devices)||!Array.isArray(parsed.links))throw new Error('Invalid');
-      var suggested=(parsed.profileName||'').toString().trim()||('Import '+new Date().toLocaleString());
-      var name=prompt(T.profile_name+':',suggested);
-      if(!name||!name.trim())return;
-      apiCall('create_profile',{name:name.trim(),permissions:[]}).then(function(res){
-        if(res.error){alert(res.error);return;}
-        // Now save data into it
-        store.profiles[name.trim()]=parsed;store.current=name.trim();
-        state=store.profiles[store.current];normalizeState(state);
-        saveStore();loadFromServer();
-      });
-    }catch(err){alert(T.error+': '+err.message);}
-    finally{e.target.value='';}
-  };
-  reader.readAsText(file);
-});
-
-/* ── Backup/Restore ── */
-document.getElementById('backupAllBtn').addEventListener('click',function(){
-  var blob=new Blob([JSON.stringify({current:store.current,profiles:store.profiles},null,2)],{type:'application/json'});
-  var url=URL.createObjectURL(blob);var a=document.createElement('a');
-  a.href=url;a.download='eccm-all-profiles-backup.json';
-  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
-});
-document.getElementById('restoreAllBtn').addEventListener('click',function(){document.getElementById('restoreAllFile').click();});
-document.getElementById('restoreAllFile').addEventListener('change',function(e){
-  var file=e.target.files&&e.target.files[0];if(!file)return;
-  var reader=new FileReader();
-  reader.onload=function(){
-    try{
-      var parsed=JSON.parse(reader.result);
-      if(!parsed.profiles)throw new Error('Keine Profile gefunden');
-      alert('Restore: import profiles as new profiles.');
-      Object.keys(parsed.profiles).forEach(function(name){
-        var safeName=name;var i=1;
-        while(store.profiles[safeName])safeName=name+' ('+i++ +')';
-        apiCall('create_profile',{name:safeName,permissions:[]}).then(function(){
-          // Save data
-          store.profiles[safeName]=parsed.profiles[name];normalizeState(store.profiles[safeName]);
-          var payload={action:'save',profileName:safeName,data:store.profiles[safeName],settings:store.settings};
-          fetch('api/profiles.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-        });
-      });
-      setTimeout(loadFromServer,2000);
-    }catch(err){alert(T.error+': '+err.message);}
-    finally{e.target.value='';}
-  };
-  reader.readAsText(file);
 });
 
 /* ── Search + Print + Clear All ── */
@@ -772,9 +746,66 @@ document.getElementById('notifSave').addEventListener('click',function(){
   });
 });
 
+/* ── VLAN Management ── */
+function renderVlanList(){
+  var list = document.getElementById('vlanList');
+  if(!list) return;
+  var vlans = state.vlans || [];
+  if(!vlans.length){ list.innerHTML='<div class="small muted" style="font-size:11px">'+T.no_vlans+'</div>'; return; }
+  list.innerHTML = vlans.map(function(v){
+    return '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px">' +
+      '<span class="vlan-dot" style="background:'+(v.color||'#888')+';width:10px;height:10px;border-radius:50%;flex-shrink:0"></span>' +
+      '<span style="font-weight:600;min-width:40px">'+v.vid+'</span>' +
+      '<span style="flex:1;color:var(--muted)">'+((v.name||'').substring(0,20))+'</span>' +
+      '<button class="btn-sm" style="padding:2px 6px;font-size:10px" onclick="editVlan(\''+v.id+'\')">✎</button>' +
+      '<button class="btn-sm btn-danger" style="padding:2px 6px;font-size:10px" onclick="deleteVlan(\''+v.id+'\')">×</button>' +
+    '</div>';
+  }).join('');
+}
+document.getElementById('vlanAddBtn').addEventListener('click',function(){
+  var vid = parseInt(document.getElementById('vlanVid').value);
+  var name = document.getElementById('vlanName').value.trim();
+  var color = document.getElementById('vlanColor').value;
+  if(!vid || vid<1 || vid>4094){alert('VLAN ID 1-4094'); return;}
+  state.vlans = state.vlans || [];
+  // Check duplicate vid
+  if(state.vlans.some(function(v){return v.vid===vid;})){ alert(T.vlan_exists); return; }
+  state.vlans.push({id:uid(),vid:vid,name:name,color:color});
+  document.getElementById('vlanVid').value='';
+  document.getElementById('vlanName').value='';
+  saveStore(); renderVlanList(); render();
+});
+function deleteVlan(id){
+  if(!confirm(T.delete_vlan_confirm)) return;
+  state.vlans = (state.vlans||[]).filter(function(v){return v.id!==id;});
+  // Remove assignments referencing this VLAN
+  var pa = state.portVlanAssignments || {};
+  Object.keys(pa).forEach(function(k){
+    pa[k] = pa[k].filter(function(vid){return vid!==id;});
+    if(!pa[k].length) delete pa[k];
+  });
+  saveStore(); renderVlanList(); render();
+}
+function editVlan(id){
+  var v = (state.vlans||[]).find(function(x){return x.id===id;});
+  if(!v) return;
+  var newName = prompt(T.vlan_name_prompt+' (VLAN '+v.vid+')', v.name||'');
+  if(newName===null) return;
+  v.name = newName.trim();
+  var newColor = prompt(T.vlan_color_prompt, v.color||'#3b82f6');
+  if(newColor && /^#[0-9a-fA-F]{6}$/.test(newColor)) v.color = newColor;
+  saveStore(); renderVlanList(); render();
+}
+// Re-render VLAN list whenever state changes
+var _origRender = typeof render === 'function' ? render : null;
+
 /* ===================== LOAD FROM SERVER ===================== */
 function loadFromServer(){
-  fetch('api/profiles.php?action=load').then(function(r){return r.json();}).then(function(data){
+  fetch('api/profiles.php?action=load').then(function(r){
+    if(r.status===401){window.location.href='login.php';return null;}
+    return r.json();
+  }).then(function(data){
+    if(!data)return;
     if(!data.ok){console.error('Load failed:',data.error);return;}
     store.current=data.current||'Default';
     store.profiles=data.profiles||{'Default':deepClone(defaultState)};
@@ -782,7 +813,7 @@ function loadFromServer(){
     profileMeta=data.profileMeta||{};
     Object.keys(store.profiles).forEach(function(name){normalizeState(store.profiles[name]);});
     state=store.profiles[store.current]||deepClone(defaultState);
-    applySettings();refreshProfileSelect();render();updateUniformPortWidth();
+    applySettings();refreshProfileSelect();render();updateUniformPortWidth();renderVlanList();
     if(store.settings.theme==='bright')document.documentElement.classList.add('theme-bright');
   }).catch(function(err){console.error('Load error:',err);refreshProfileSelect();render();});
 }

@@ -44,7 +44,7 @@ try {
             $sql = '
                 SELECT p.id, p.name, p.data, p.owner_id, u.username AS owner_name,
                        pp.can_view, pp.can_patch, pp.can_add_patch,
-                       pp.can_edit_device, pp.can_add_device, pp.can_delete, pp.can_manage
+                       pp.can_edit_device, pp.can_add_device, pp.can_delete, pp.can_manage, pp.can_export, pp.can_backup
                 FROM profiles p
                 LEFT JOIN profile_permissions pp ON pp.profile_id = p.id AND pp.user_id = :uid1
                 LEFT JOIN users u ON u.id = p.owner_id
@@ -59,7 +59,18 @@ try {
             $profileMeta = [];
             while ($row = $stmt->fetch()) {
                 $isOwner = ((int)$row['owner_id'] === $userId);
-                $profiles[$row['name']] = json_decode($row['data'], true);
+                $pData = json_decode($row['data'], true) ?: [];
+                // Ensure hash-map fields are JSON objects (not arrays).
+                // PHP json_decode turns {} into [] with assoc=true,
+                // then json_encode outputs [] instead of {} — breaking JS.
+                foreach (['portAliases','reservedPorts','portSpeeds','portVlans','portLinkedTo','portColors','portVlanAssignments','portNotes'] as $hf) {
+                    if (!isset($pData[$hf]) || !is_array($pData[$hf]) || empty($pData[$hf])) {
+                        $pData[$hf] = new \stdClass;
+                    } else {
+                        $pData[$hf] = (object)$pData[$hf];
+                    }
+                }
+                $profiles[$row['name']] = $pData;
                 $profileMeta[$row['name']] = [
                     'id'        => (int)$row['id'],
                     'owner'     => $row['owner_name'],
@@ -67,7 +78,7 @@ try {
                     'is_owner'  => $isOwner,
                     'perms'     => $isOwner || $isAdmin ? [
                         'can_view'=>1,'can_patch'=>1,'can_add_patch'=>1,
-                        'can_edit_device'=>1,'can_add_device'=>1,'can_delete'=>1,'can_manage'=>1
+                        'can_edit_device'=>1,'can_add_device'=>1,'can_delete'=>1,'can_manage'=>1,'can_export'=>1,'can_backup'=>1
                     ] : [
                         'can_view'       => (int)($row['can_view'] ?? 1),
                         'can_patch'      => (int)($row['can_patch'] ?? 0),
@@ -76,6 +87,8 @@ try {
                         'can_add_device' => (int)($row['can_add_device'] ?? 0),
                         'can_delete'     => (int)($row['can_delete'] ?? 0),
                         'can_manage'     => (int)($row['can_manage'] ?? 0),
+                        'can_export'     => (int)($row['can_export'] ?? 0),
+                        'can_backup'     => (int)($row['can_backup'] ?? 0),
                     ]
                 ];
             }
@@ -88,7 +101,7 @@ try {
 
             // If no profiles, create default
             if (empty($profiles)) {
-                $default = ['devices'=>[],'links'=>[],'portAliases'=>new \stdClass,'reservedPorts'=>new \stdClass,'portSpeeds'=>new \stdClass,'portVlans'=>new \stdClass,'portLinkedTo'=>new \stdClass];
+                $default = ['devices'=>[],'links'=>[],'portAliases'=>new \stdClass,'reservedPorts'=>new \stdClass,'portSpeeds'=>new \stdClass,'portVlans'=>new \stdClass,'portLinkedTo'=>new \stdClass,'portColors'=>new \stdClass,'vlans'=>[],'portVlanAssignments'=>new \stdClass,'portNotes'=>new \stdClass];
                 $db->prepare('INSERT INTO profiles (owner_id, name, data) VALUES (:uid, :name, :data)')
                    ->execute(['uid' => $userId, 'name' => 'Default', 'data' => json_encode($default)]);
                 $pid = (int)$db->lastInsertId();
@@ -96,7 +109,7 @@ try {
                 $profileMeta['Default'] = [
                     'id'=>$pid, 'owner'=>currentUsername(), 'owner_id'=>$userId,
                     'is_owner'=>true,
-                    'perms'=>['can_view'=>1,'can_patch'=>1,'can_add_patch'=>1,'can_edit_device'=>1,'can_add_device'=>1,'can_delete'=>1,'can_manage'=>1]
+                    'perms'=>['can_view'=>1,'can_patch'=>1,'can_add_patch'=>1,'can_edit_device'=>1,'can_add_device'=>1,'can_delete'=>1,'can_manage'=>1,'can_export'=>1,'can_backup'=>1]
                 ];
                 $current = 'Default';
                 $db->prepare('INSERT INTO user_active_profile (user_id, profile_id) VALUES (:uid, :pid) ON DUPLICATE KEY UPDATE profile_id = :pid2')
@@ -147,9 +160,15 @@ try {
                 $oldJson = $stmtOld->fetchColumn();
                 $oldData = $oldJson ? json_decode($oldJson, true) : null;
 
-                // Save new data
+                // Save new data — ensure hash-map fields are stored as {} not []
+                $saveData = $data;
+                foreach (['portAliases','reservedPorts','portSpeeds','portVlans','portLinkedTo','portColors','portVlanAssignments','portNotes'] as $hf) {
+                    if (!isset($saveData[$hf]) || (is_array($saveData[$hf]) && empty($saveData[$hf]))) {
+                        $saveData[$hf] = new \stdClass;
+                    }
+                }
                 $db->prepare('UPDATE profiles SET data = :data WHERE id = :pid')
-                   ->execute(['data' => json_encode($data), 'pid' => $profileId]);
+                   ->execute(['data' => json_encode($saveData), 'pid' => $profileId]);
 
                 // Detect changes and send notifications
                 if ($oldData !== null) {
@@ -185,7 +204,7 @@ try {
                 exit;
             }
 
-            $default = ['devices'=>[],'links'=>[],'portAliases'=>new \stdClass,'reservedPorts'=>new \stdClass,'portSpeeds'=>new \stdClass,'portVlans'=>new \stdClass,'portLinkedTo'=>new \stdClass];
+            $default = ['devices'=>[],'links'=>[],'portAliases'=>new \stdClass,'reservedPorts'=>new \stdClass,'portSpeeds'=>new \stdClass,'portVlans'=>new \stdClass,'portLinkedTo'=>new \stdClass,'portColors'=>new \stdClass,'vlans'=>[],'portVlanAssignments'=>new \stdClass,'portNotes'=>new \stdClass];
             $db->prepare('INSERT INTO profiles (owner_id, name, data) VALUES (:uid, :name, :data)')
                ->execute(['uid' => $userId, 'name' => $name, 'data' => json_encode($default)]);
             $pid = (int)$db->lastInsertId();
@@ -196,7 +215,7 @@ try {
 
             // Save permissions for other users
             if (!empty($permsToSet)) {
-                $ins = $db->prepare('INSERT INTO profile_permissions (profile_id, user_id, can_view, can_patch, can_add_patch, can_edit_device, can_add_device, can_delete, can_manage) VALUES (:pid, :uid, :v, :p, :ap, :ed, :ad, :del, :man)');
+                $ins = $db->prepare('INSERT INTO profile_permissions (profile_id, user_id, can_view, can_patch, can_add_patch, can_edit_device, can_add_device, can_delete, can_manage, can_export, can_backup) VALUES (:pid, :uid, :v, :p, :ap, :ed, :ad, :del, :man, :exp, :bak)');
                 foreach ($permsToSet as $p) {
                     $targetUid = (int)($p['user_id'] ?? 0);
                     if ($targetUid <= 0 || $targetUid === $userId) continue;
@@ -320,7 +339,7 @@ try {
             $db->prepare('DELETE FROM profile_permissions WHERE profile_id = :pid')
                ->execute(['pid' => $pid]);
 
-            $ins = $db->prepare('INSERT INTO profile_permissions (profile_id, user_id, can_view, can_patch, can_add_patch, can_edit_device, can_add_device, can_delete, can_manage) VALUES (:pid, :uid, :v, :p, :ap, :ed, :ad, :del, :man)');
+            $ins = $db->prepare('INSERT INTO profile_permissions (profile_id, user_id, can_view, can_patch, can_add_patch, can_edit_device, can_add_device, can_delete, can_manage, can_export, can_backup) VALUES (:pid, :uid, :v, :p, :ap, :ed, :ad, :del, :man, :exp, :bak)');
             foreach ($permsToSet as $p) {
                 $targetUid = (int)($p['user_id'] ?? 0);
                 if ($targetUid <= 0) continue;
@@ -342,6 +361,94 @@ try {
         case 'list_users':
             $rows = $db->query('SELECT id, username, email FROM users ORDER BY username')->fetchAll();
             echo json_encode(['ok' => true, 'users' => $rows]);
+            break;
+
+        /* ── BACKUP ALL PROFILES (admin only) ──────────────── */
+        case 'backup_all':
+            if (!$isAdmin) {
+                echo json_encode(['error' => 'Admin only']);
+                exit;
+            }
+            $stmt = $db->query('SELECT p.name, p.data, u.username AS owner FROM profiles p LEFT JOIN users u ON u.id = p.owner_id ORDER BY p.name');
+            $profiles = [];
+            while ($row = $stmt->fetch()) {
+                $profiles[$row['name']] = [
+                    'data' => json_decode($row['data'], true),
+                    'owner' => $row['owner']
+                ];
+            }
+            echo json_encode([
+                'ok' => true,
+                'data' => [
+                    'exportedAt' => date('c'),
+                    'profiles' => $profiles
+                ]
+            ]);
+            break;
+
+        /* ── RESTORE ALL PROFILES (admin only) ─────────────── */
+        case 'restore_all':
+            if (!$isAdmin) {
+                echo json_encode(['error' => 'Admin only']);
+                exit;
+            }
+            $backupData = $input['data'] ?? null;
+            if (!$backupData || !isset($backupData['profiles'])) {
+                echo json_encode(['error' => 'Invalid backup data']);
+                exit;
+            }
+            $imported = 0;
+            $skipped = 0;
+            foreach ($backupData['profiles'] as $name => $pEntry) {
+                // Check if profile name already exists
+                $check = $db->prepare('SELECT id FROM profiles WHERE name = :name');
+                $check->execute(['name' => $name]);
+                if ($check->fetch()) {
+                    $skipped++;
+                    continue;
+                }
+                $pData = isset($pEntry['data']) ? $pEntry['data'] : $pEntry;
+                // Ensure hash-map fields are objects
+                foreach (['portAliases','reservedPorts','portSpeeds','portVlans','portLinkedTo','portColors','portVlanAssignments','portNotes'] as $hf) {
+                    if (!isset($pData[$hf]) || (is_array($pData[$hf]) && empty($pData[$hf]))) {
+                        $pData[$hf] = new \stdClass;
+                    }
+                }
+                $db->prepare('INSERT INTO profiles (owner_id, name, data) VALUES (:uid, :name, :data)')
+                   ->execute(['uid' => $userId, 'name' => $name, 'data' => json_encode($pData)]);
+                $imported++;
+            }
+            echo json_encode(['ok' => true, 'message' => "Restored: $imported profiles. Skipped (already exist): $skipped."]);
+            break;
+
+        /* ── IMPORT SINGLE PROFILE (admin only) ────────────── */
+        case 'import_profile':
+            if (!$isAdmin) {
+                echo json_encode(['error' => 'Admin only']);
+                exit;
+            }
+            $name = trim($input['name'] ?? '');
+            $pData = $input['data'] ?? null;
+            if (!$name || !$pData) {
+                echo json_encode(['error' => 'Name and data required']);
+                exit;
+            }
+            // Check duplicate
+            $check = $db->prepare('SELECT id FROM profiles WHERE name = :name');
+            $check->execute(['name' => $name]);
+            if ($check->fetch()) {
+                echo json_encode(['error' => 'Profile "' . $name . '" already exists']);
+                exit;
+            }
+            // Ensure hash-map fields are objects
+            foreach (['portAliases','reservedPorts','portSpeeds','portVlans','portLinkedTo','portColors','portVlanAssignments','portNotes'] as $hf) {
+                if (!isset($pData[$hf]) || (is_array($pData[$hf]) && empty($pData[$hf]))) {
+                    $pData[$hf] = new \stdClass;
+                }
+            }
+            $db->prepare('INSERT INTO profiles (owner_id, name, data) VALUES (:uid, :name, :data)')
+               ->execute(['uid' => $userId, 'name' => $name, 'data' => json_encode($pData)]);
+            echo json_encode(['ok' => true, 'message' => 'Profile "' . $name . '" imported successfully.']);
             break;
 
         default:
@@ -368,7 +475,7 @@ function getEffectivePerms(PDO $db, int $userId, string $profileName, bool $isAd
     $stmt = $db->prepare('
         SELECT p.id AS profile_id, p.owner_id,
                pp.can_view, pp.can_patch, pp.can_add_patch,
-               pp.can_edit_device, pp.can_add_device, pp.can_delete, pp.can_manage
+               pp.can_edit_device, pp.can_add_device, pp.can_delete, pp.can_manage, pp.can_export, pp.can_backup
         FROM profiles p
         LEFT JOIN profile_permissions pp ON pp.profile_id = p.id AND pp.user_id = :uid1
         WHERE p.name = :pname AND (p.owner_id = :uid2 OR pp.can_view = 1' . ($isAdmin ? ' OR 1=1' : '') . ')

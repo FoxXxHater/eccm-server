@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS profile_permissions (
     can_add_device  TINYINT(1) NOT NULL DEFAULT 0,
     can_delete      TINYINT(1) NOT NULL DEFAULT 0,
     can_manage      TINYINT(1) NOT NULL DEFAULT 0,
+    can_export      TINYINT(1) NOT NULL DEFAULT 0,
+    can_backup      TINYINT(1) NOT NULL DEFAULT 0,
     FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id)    REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY uq_profile_user (profile_id, user_id)

@@ -114,6 +114,7 @@ html.theme-bright #editModal .card{background:#fff!important;color:#111!importan
   <div class="tab" data-tab="smtp"><?=$t('tab_smtp')?></div>
   <div class="tab" data-tab="templates"><?=$t('tab_templates')?></div>
   <div class="tab" data-tab="database"><?=$t('tab_database')?></div>
+  <div class="tab" data-tab="backup"><?=$t('tab_backup')?></div>
 </div>
 
 <!-- ═══════════ GENERAL TAB ═══════════ -->
@@ -207,6 +208,31 @@ html.theme-bright #editModal .card{background:#fff!important;color:#111!importan
     <div class="row-flex"><div><label><?=$t('db_host')?></label><input type="text" id="dbHost" value="localhost"></div><div style="max-width:120px"><label><?=$t('db_port')?></label><input type="number" id="dbPort" value="3306"></div><div><label><?=$t('db_name')?></label><input type="text" id="dbName" value="eccm_db"></div></div>
     <div class="row-flex" style="margin-top:4px"><div><label><?=$t('db_user')?></label><input type="text" id="dbUser" value="root"></div><div><label><?=$t('db_pass')?></label><input type="password" id="dbPass"></div></div>
     <div style="margin-top:14px;display:flex;gap:8px"><button onclick="testDB()"><?=$t('db_test')?></button><button class="btn-primary" onclick="saveDB()"><?=$t('save')?></button></div><div id="dbMsg"></div>
+  </div>
+</div>
+
+</div>
+
+<!-- ═══════════ BACKUP / IMPORT TAB ═══════════ -->
+<div class="tab-content" id="tab-backup">
+  <div class="card">
+    <h2><?=$t('backup_title')?></h2>
+    <p class="hint"><?=$t('backup_hint')?></p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <button class="btn-primary" onclick="doBackupAll()"><?=$t('backup_btn')?></button>
+      <button onclick="document.getElementById('restoreFile').click()"><?=$t('restore_btn')?></button>
+      <input id="restoreFile" type="file" accept=".json,application/json" style="display:none" onchange="doRestoreAll(this)">
+    </div>
+    <div id="backupMsg" style="margin-top:8px"></div>
+  </div>
+  <div class="card">
+    <h2><?=$t('import_title')?></h2>
+    <p class="hint"><?=$t('import_hint')?></p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <button onclick="document.getElementById('importFile').click()"><?=$t('import_btn')?></button>
+      <input id="importFile" type="file" accept=".json,application/json" style="display:none" onchange="doImportProfile(this)">
+    </div>
+    <div id="importMsg" style="margin-top:8px"></div>
   </div>
 </div>
 
@@ -310,6 +336,63 @@ function loadDBConfig() { api('get_db_config').then(res=>{if(!res.ok)return;var 
 function getDBForm() { return {host:document.getElementById('dbHost').value,port:+document.getElementById('dbPort').value||3306,dbname:document.getElementById('dbName').value,username:document.getElementById('dbUser').value,password:document.getElementById('dbPass').value}; }
 function testDB() { api('test_db',getDBForm()).then(res=>showMsg(document.getElementById('dbMsg'),res.message,res.ok)); }
 function saveDB() { api('save_db',getDBForm()).then(res=>showMsg(document.getElementById('dbMsg'),res.message||res.error,!!res.ok)); }
+
+// ── Backup / Restore / Import ──
+function doBackupAll() {
+  fetch('api/profiles.php', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'backup_all'})})
+    .then(r => r.json())
+    .then(res => {
+      if (!res.ok) { showMsg(document.getElementById('backupMsg'), res.error || 'Error', false); return; }
+      var blob = new Blob([JSON.stringify(res.data, null, 2)], {type:'application/json'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'eccm-backup-' + new Date().toISOString().slice(0,10) + '.json';
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      showMsg(document.getElementById('backupMsg'), 'Backup downloaded (' + Object.keys(res.data.profiles).length + ' profiles)', true);
+    })
+    .catch(e => showMsg(document.getElementById('backupMsg'), e.message, false));
+}
+
+function doRestoreAll(input) {
+  var file = input.files && input.files[0]; if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function() {
+    try {
+      var parsed = JSON.parse(reader.result);
+      if (!parsed.profiles) throw new Error('No profiles found in backup');
+      var count = Object.keys(parsed.profiles).length;
+      if (!confirm('Restore ' + count + ' profiles from backup?\nExisting profiles with the same name will be skipped.')) return;
+      fetch('api/profiles.php', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'restore_all', data: parsed})})
+        .then(r => r.json())
+        .then(res => {
+          showMsg(document.getElementById('backupMsg'), res.message || res.error || 'Done', !!res.ok);
+        });
+    } catch(e) { showMsg(document.getElementById('backupMsg'), 'Error: ' + e.message, false); }
+    finally { input.value = ''; }
+  };
+  reader.readAsText(file);
+}
+
+function doImportProfile(input) {
+  var file = input.files && input.files[0]; if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function() {
+    try {
+      var parsed = JSON.parse(reader.result);
+      if (!Array.isArray(parsed.devices) || !Array.isArray(parsed.links)) throw new Error('Invalid profile file');
+      var suggested = (parsed.profileName || '').toString().trim() || ('Import ' + new Date().toLocaleString());
+      var name = prompt('Profile name:', suggested);
+      if (!name || !name.trim()) return;
+      fetch('api/profiles.php', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'import_profile', name: name.trim(), data: parsed})})
+        .then(r => r.json())
+        .then(res => {
+          showMsg(document.getElementById('importMsg'), res.message || res.error || 'Done', !!res.ok);
+        });
+    } catch(e) { showMsg(document.getElementById('importMsg'), 'Error: ' + e.message, false); }
+    finally { input.value = ''; }
+  };
+  reader.readAsText(file);
+}
 
 // ── Init ──
 loadGeneral(); loadUsers(); loadDBConfig(); loadSMTPConfig(); loadTemplates();
